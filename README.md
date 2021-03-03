@@ -1,17 +1,17 @@
 # manuscript-bacGC
 
-# Instructions to reproduce analysis in "Evolutionary jumps in bacterial GC content"
+## Instructions to reproduce analysis in "Evolutionary jumps in bacterial GC content"
 
 This document describes the instructions, datasets, and code to reproduce the results in the research article ["Evlutionary jumps in GC content"](https://doi.org/10.1101/2021.02.16.431469).
 					
-## Datasets
+### Datasets
 1. The original phylogeny was obtained from GTDB (https://data.gtdb.ecogenomic.org/releases/release80/80.0/bac120_r80.tree). To run the following code and replicate results, this file should be placed in- “/Input_data/phylogenies/GTDB_bac120_r80.tree”.
 2. We sub-sampled this original GTDB phylogeny using a custom script which is documented in the R notebook- “/Codes/tree_pruning_GTDB.Rmd”. This notebook also contains code corresponding to the choice of the specific threshold for sub-sampling. The resulting sub-sampled/pruned phylogeny will be generated in the file- “/Input_data/phylogenies/GTDB_bac120_r80_pruned0.01.newick”.
 3. We obtained the metadata corresponding to the original phylogeny from GTDB (https://data.gtdb.ecogenomic.org/releases/release80/80.0/bac_metadata_r80.tsv). From this, the previous R notebook also extracts the metadata corresponding to the sub-sampled phylogeny; this metadata will be generated in the file- “/Input_data/phylogenies/GTDB_bac_metadata_r80_pruned0.01.tsv”.
 4. The extraction of order-level clades can be reproduced using the notebook- “/Codes/extracting_order_level_clades.Rmd”. The code in this notebook also extracts GC content data corresponding to each order-level clade used for further analysis. The output tree files for each order-level clade can be found at- “/Input_data/phylogenies/X_GTDB_14k_tree.newick” and the files containing corresponding GC contents can be found at “/Input_data/phylogenies/X_GTDB_14k_GC.txt”.
 5. Here X represents the 10 order-level clades used in our analysis- Alpha1 (Acetobacterales and other clades), Rhizobiale, Rhodobacterale, Sphingomonadale, Bacteroidale, Flavobacteriale, Cytophagale, Betaproteo, Pseudomonadale, or Enterobacterale.
 	
-## Comparing trait evolution models
+### Comparing trait evolution models
 1. We fit the basic Brownian and Ornstein-Uhlenbeck (OU models) to GC contents of different order-level clades using R-package geiger. The fitting procedure can be reproduced using the following script- “/Codes/fitting_Brownian_and_OU_to_order_level_clades.Rmd”.
 2. The Levy jumps model was fit using the software levolution as suggested in the documentation (https://bitbucket.org/WegmannLab/levolution/wiki/Launching%20levolution). Levolution can be run by supplying a parameter config file, input phylogeny, and trait data (here, GC content).
 3. The parameter config file corresponding to the Bacteroidales (an order-level clade) used in this example is available at- “/Input_data/levolution_config_files/levolution_Bacteroidale_GTDB_14k_GC_config1_alpha0.1.param”.
@@ -24,7 +24,7 @@ This document describes the instructions, datasets, and code to reproduce the re
  	2. Bacteroidale_GTDB_14k_GC_config1_alpha0.1_oneLineSummary.txt (a summary of likelihood and best-fit parameter values)
  	3. levolution_Bacteroidale_GTDB_14k_GC_config1_alpha0.1.log (a log file where on-screen output is directed)
 
-## Identification of GC content jumps
+### Identification of GC content jumps
 1. As described in the main text, we decided posterior probability thresholds to identify jumps by using a simulation approach.
 	1. First, for a given order-level clade, we simulated jumps on the phylogeny according to a Levy jumps model using best-fit parameter values obtained via levolution (previous section). These simulations can be run using this R notebook- “/Codes/GC_Levy_jumps_simulations_GTDB.Rmd” which sources and calls the function “/Codes/ex_jump_simulator.R”. This notebook returns simulated trait data for each taxa, as well as the location of jumps in the following two example output files-
 		1. trait data file: /Input_data/levolution_files_inference_simulated_data/Bacteroidale_GTDB_14k_GC_config1_alpha0.25_geigerSim1.traits
@@ -37,7 +37,7 @@ This document describes the instructions, datasets, and code to reproduce the re
 	6. The R notebook-  “/Codes/precision_recall_curves_simulated_jumps.Rmd” also summarizes the variation in precision and recall at the chosen thresholds.
 The branches whose posterior probabilities (of jumps >0) inferred from actual GC content data were greater than the thresholds decided above were identified as those experiencing GC content jumps.
 
-## Analysis of inferred jumps
+### Analysis of inferred jumps
 1. We first mapped the branches with jumps to the phylogenies of each order-level clade. Using the branch-specific posterior probabilities generated in 2f.i and the posterior probability thresholds decided in 3e. 
 2. The image files can be obtained by running the code in this R notebook - “/Codes/levolution_jump_mapping_phylogeny.Rmd”. This notebook generates all image files in “.svg” format in the folder – “levolution_files_inference_actual_data/”, e.g. “levolution_Bacteroidale_GTDB_14k_GC_config1_alpha0.25_pp0.95_unlabelled_jumpNum_magma_scale.svg”. These images appear as Figure 2, 3 and Figure S3-S10 in the manuscript.
 3. The jump magnitudes and directions can be summarized and plotted using this R notebook- “/Codes/levolution_jump_magnitudes_and_direction.Rmd”. This code generates Figure 4 in the manuscript. The code in this notebook also:
