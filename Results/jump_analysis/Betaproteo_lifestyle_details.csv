@@ -1,0 +1,25 @@
+,focal_habitat,sis_habitat,focal_metabolism,sis_metabolism
+Betaproteo_jump1,NA,NA|water,NA,NA|aerobic
+Betaproteo_jump2,NA,NA|NA|NA,NA,NA|NA|NA
+Betaproteo_jump3,host,NA|host|NA|NA|NA|NA|NA|host|sediment|NA|soil|NA|NA|NA|soil|NA|soil|NA|NA|NA|NA|wastewater|NA|NA|soil|NA|NA|NA|NA|rock|NA|NA|NA|soil|NA|NA|NA|NA|NA|NA|NA|NA|host|NA|NA|NA|host|NA|sludge|NA|NA|NA|soil|soil|soil|NA|NA|soil|host|host|host|soil|host|host,NA,NA|aerobic|NA|NA|NA|NA|NA|aerobic|facultative|NA|aerobic|NA|NA|NA|NA|NA|obligate aerobic|NA|NA|NA|NA|NA|NA|NA|obligate aerobic|NA|NA|NA|NA|NA|NA|NA|NA|NA|NA|NA|NA|NA|NA|aerobic|NA|aerobic|aerobic|NA|NA|NA|aerobic|NA|aerobic|NA|NA|NA|aerobic|aerobic|aerobic|aerobic|NA|aerobic|aerobic|obligate aerobic|NA|aerobic|microaerophilic|aerobic
+Betaproteo_jump4,NA,NA|NA|host|sediment|NA|soil|NA|NA|NA|soil|NA|soil|NA|NA|NA|NA|wastewater|NA|NA|soil|NA|NA|NA|NA|rock|NA|NA|NA|soil|NA|NA|NA|NA|NA|NA|NA|NA|host,NA,NA|NA|aerobic|facultative|NA|aerobic|NA|NA|NA|NA|NA|obligate aerobic|NA|NA|NA|NA|NA|NA|NA|obligate aerobic|NA|NA|NA|NA|NA|NA|NA|NA|NA|NA|NA|NA|NA|NA|aerobic|NA|aerobic|aerobic
+Betaproteo_jump5,NA,soil,NA,aerobic
+Betaproteo_jump6,NA|NA|NA|water|water|water|NA|water|NA|water|NA|NA|host|water,wastewater|host|host|host|host|NA|host|NA|host|soil|host|NA|host|NA|NA|soil|NA|soil|NA|NA|built|soil|NA|host|NA|NA|NA,NA|NA|NA|aerobic|aerobic|NA|NA|aerobic|NA|aerobic|NA|NA|aerobic|aerobic,NA|aerobic|aerobic|aerobic|aerobic|NA|aerobic|NA|aerobic|NA|obligate aerobic|NA|obligate aerobic|NA|NA|aerobic|NA|aerobic|NA|NA|aerobic|NA|NA|aerobic|NA|NA|NA
+Betaproteo_jump7,NA|NA,NA|NA|NA|wastewater|sediment|NA|soil|NA|NA|host|NA|water|NA|NA|NA|water|water|NA,NA|NA,NA|NA|NA|aerobic|aerobic|NA|aerobic|NA|aerobic|NA|NA|obligate aerobic|NA|NA|NA|microaerophilic|microaerophilic|aerobic
+Betaproteo_jump8,NA|water,water|NA|water|NA|NA|NA|water,NA|NA,facultative|NA|aerobic|NA|NA|NA|aerobic
+Betaproteo_jump9,soil,NA,aerobic,NA
+Betaproteo_jump10,NA|NA|NA|NA|NA,host|NA|host|sludge|NA|NA|NA|petroleum|soil|soil|NA|host|host|host|rock|NA|host|host|host|host|host|host|host|NA|soil|NA|NA|host|host|NA|NA|host|host|host|NA|NA|NA|NA|soil|compost|NA|host|host|host|host|NA|host|host,NA|NA|NA|NA|NA,aerobic|NA|aerobic|facultative|NA|aerobic|NA|NA|facultative|aerobic|NA|aerobic|NA|aerobic|aerobic|NA|aerobic|aerobic|aerobic|aerobic|aerobic|aerobic|microaerophilic|NA|aerobic|NA|NA|aerobic|aerobic|NA|NA|anaerobic|anaerobic|anaerobic|NA|aerobic|NA|anaerobic|aerobic|obligate aerobic|NA|microaerophilic|aerobic|aerobic|aerobic|aerobic|microaerophilic|microaerophilic
+Betaproteo_jump11,NA|NA,soil,NA|NA,aerobic
+Betaproteo_jump12,NA|NA|NA,NA,NA|NA|NA,NA
+Betaproteo_jump13,soil,water|water|soil,NA,facultative|facultative|aerobic
+Betaproteo_jump14,water,soil,facultative,aerobic
+Betaproteo_jump15,NA,wastewater|host|NA|NA|sediment|NA|NA|water|water|NA|host|NA|host|NA|host|soil|water|wastewater,NA,aerobic|facultative|NA|facultative|NA|NA|NA|facultative|facultative|NA|NA|NA|aerobic|obligate aerobic|aerobic|obligate aerobic|facultative|aerobic
+Betaproteo_jump16,water,wastewater|host,aerobic,aerobic|facultative
+Betaproteo_jump17,host|NA|host|NA|host|NA|host|host|host|host|NA|host|host|host|host|NA|NA|host|NA|NA|host|NA|host|NA|host|NA|NA|host|host|host|host|host|NA|host|NA|host,NA|NA|sediment|NA|NA|water|water|NA|host|NA|host|NA|host|soil|water|wastewater,microaerophilic|NA|microaerophilic|NA|microaerophilic|NA|microaerophilic|aerobic|microaerophilic|aerobic|microaerophilic|aerobic|aerobic|aerobic|aerobic|NA|NA|facultative|NA|NA|aerobic|NA|microaerophilic|aerobic|aerobic|NA|NA|aerobic|aerobic|aerobic|aerobic|aerobic|NA|facultative|NA|aerobic,NA|facultative|NA|NA|NA|facultative|facultative|NA|NA|NA|aerobic|obligate aerobic|aerobic|obligate aerobic|facultative|aerobic
+Betaproteo_jump18,water|NA|water|NA|water|NA|NA,NA|NA|NA|NA|sediment|sludge|host|water|sediment|sediment|NA|NA|NA|water|NA|NA|NA|NA|NA|NA|sediment|sediment|sediment,NA|NA|aerobic|NA|NA|NA|NA,NA|NA|NA|NA|aerobic|aerobic|NA|NA|facultative|facultative|NA|NA|NA|NA|NA|NA|NA|NA|NA|NA|facultative|aerobic|aerobic
+Betaproteo_jump19,NA,sediment|sediment,NA,aerobic|aerobic
+Betaproteo_jump20,NA,NA|NA,NA,NA|NA
+Betaproteo_jump21,NA|NA,NA,NA|NA,anaerobic
+Betaproteo_jump22,NA,NA|NA|NA|soil|NA|NA|NA|soil|soil|NA|NA|soil|soil,NA,NA|aerobic|NA|aerobic|NA|NA|NA|aerobic|aerobic|NA|NA|aerobic|aerobic
+Betaproteo_jump23,NA,NA|NA|NA|soil|NA|NA|NA|soil|soil|NA|NA|soil|soil,NA,NA|aerobic|NA|aerobic|NA|NA|NA|aerobic|aerobic|NA|NA|aerobic|aerobic
+Betaproteo_jump24,NA,NA,NA,NA

@@ -1,0 +1,9 @@
+EcoFactor	Direction	Number
+All	upward	43
+All	downward	48
+Marine	upward	23
+Marine	downward	22
+HostToFree	upward	8
+HostToFree	downward	4
+FreeToHost	upward	4
+FreeToHost	downward	15

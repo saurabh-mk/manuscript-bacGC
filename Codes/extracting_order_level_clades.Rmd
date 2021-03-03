@@ -1,0 +1,187 @@
+---
+title: "Extracting order level clades from GTDB phylogeny"
+output: html_notebook
+---
+
+#### Background
+I have a large phylogeny of bacterial genomes from GTDB. To fit macroevolutionary models to GC content, I will extract order-level clades from this phylogeny. This will reduce potential heterogeneity in the evolutionary modes of GC content across clades.
+
+```{r read_GTDB_tree }
+library(phytools)
+library(rncl)
+
+data_folder <- "../Input_data/phylogenies/"
+
+#there was a problem reading this tree with read.newick
+GTDB_14k_tree <- read_newick_phylo(file = paste0(data_folder, "GTDB_bac120_r80_pruned0.01.newick"))
+GTDB_14k_metadata <- read.delim(file = paste0(data_folder, "GTDB_bac_metadata_r80_pruned0.01.tsv"), header = T, row.names = 1, stringsAsFactors = F)
+
+GTDB_14k_tree_labeled <- GTDB_14k_tree
+GTDB_14k_tree_labeled$tip.label <- sapply(GTDB_14k_tree$tip.label, function(x) GTDB_14k_metadata[x,"gtdb_taxonomy"])
+```
+
+####Bacteroidetes
+Lets first extract and write order-level clades and corresponding GC content data from Bacteroidetes. After looking at the Bacteroidetes phylogeny, I decided to extract three order level clades- Bacteroidales, Flavobacteriales, and Cytophagales.
+```{r extract_Bacteroidetes_subclades }
+Bacteroidetes_taxa <- rownames(GTDB_14k_metadata)[grep(pattern = "Bacteroidetes", x = GTDB_14k_metadata[,"gtdb_taxonomy"], value = F, fixed = T)]
+Bacteroidetes_mrca <- findMRCA(tree = GTDB_14k_tree, tips = Bacteroidetes_taxa, type = "node")
+Bacteroidetes_GTDB_14k_tree <- drop.tip(phy = GTDB_14k_tree, tip = setdiff(GTDB_14k_tree$tip.label, Bacteroidetes_taxa))
+
+Bacteroidale_mrca <- getMRCA(phy = Bacteroidetes_GTDB_14k_tree, tip = grep(pattern = "Bacteroidales", x = Bacteroidetes_GTDB_14k_tree_labeled$tip.label))
+Bacteroidale_GTDB_14k_tree <- extract.clade(phy = Bacteroidetes_GTDB_14k_tree, node = Bacteroidale_mrca)
+
+Flavobacteriale_mrca <- getMRCA(phy = Bacteroidetes_GTDB_14k_tree, tip = grep(pattern = "Flavobacteriales", x = Bacteroidetes_GTDB_14k_tree_labeled$tip.label))
+Flavobacteriale_GTDB_14k_tree <- extract.clade(phy = Bacteroidetes_GTDB_14k_tree, node = Flavobacteriale_mrca)
+
+Cytophagale_mrca <- getMRCA(phy = Bacteroidetes_GTDB_14k_tree, tip = grep(pattern = "Cytophagales", x = Bacteroidetes_GTDB_14k_tree_labeled$tip.label))
+Cytophagale_GTDB_14k_tree <- extract.clade(phy = Bacteroidetes_GTDB_14k_tree, node = Cytophagale_mrca)
+
+gc_Bactero <- GTDB_14k_metadata[Bacteroidale_GTDB_14k_tree$tip.label, "gc_percentage"]
+names(gc_Bactero) <- Bacteroidale_GTDB_14k_tree$tip.label
+Bacteroidale_GTDB_14k_tree_labeled <- Bacteroidale_GTDB_14k_tree
+Bacteroidale_GTDB_14k_tree_labeled$tip.label <- GTDB_14k_metadata[Bacteroidale_GTDB_14k_tree$tip.label, "gtdb_taxonomy"]
+
+gc_Flavo <- GTDB_14k_metadata[Flavobacteriale_GTDB_14k_tree$tip.label, "gc_percentage"]
+names(gc_Flavo) <- Flavobacteriale_GTDB_14k_tree$tip.label
+Flavobacteriale_GTDB_14k_tree_labeled <- Flavobacteriale_GTDB_14k_tree
+Flavobacteriale_GTDB_14k_tree_labeled$tip.label <- GTDB_14k_metadata[Flavobacteriale_GTDB_14k_tree$tip.label, "gtdb_taxonomy"]
+
+gc_Cyto <- GTDB_14k_metadata[Cytophagale_GTDB_14k_tree$tip.label, "gc_percentage"]
+names(gc_Cyto) <- Cytophagale_GTDB_14k_tree$tip.label
+Cytophagale_GTDB_14k_tree_labeled <- Cytophagale_GTDB_14k_tree
+Cytophagale_GTDB_14k_tree_labeled$tip.label <- GTDB_14k_metadata[Cytophagale_GTDB_14k_tree$tip.label, "gtdb_taxonomy"]
+```
+
+```{r write_Bacteroidetes_subclade_data, eval=F }
+write.tree(phy = Bacteroidale_GTDB_14k_tree, file = paste0(data_folder, "Bacteroidale_GTDB_14k_tree.newick"))
+write.tree(phy = Flavobacteriale_GTDB_14k_tree, file = paste0(data_folder, "Flavobacteriale_GTDB_14k_tree.newick"))
+write.tree(phy = Cytophagale_GTDB_14k_tree, file = paste0(data_folder, "Cytophagale_GTDB_14k_tree.newick"))
+
+Bacteroidale_GTDB_14k_tree$node.label <- NULL
+write.nexus(Bacteroidale_GTDB_14k_tree, file = paste0(data_folder, "Bacteroidale_GTDB_14k_tree.nexus"))
+Flavobacteriale_GTDB_14k_tree$node.label <- NULL
+write.nexus(Flavobacteriale_GTDB_14k_tree, file = paste0(data_folder, "Flavobacteriale_GTDB_14k_tree.nexus"))
+Cytophagale_GTDB_14k_tree$node.label <- NULL
+write.nexus(Cytophagale_GTDB_14k_tree, file = paste0(data_folder, "Cytophagale_GTDB_14k_tree.nexus"))
+
+
+write.table(x = gc_Bactero, file = paste0(data_folder, "Bacteroidale_GTDB_14k_GC.txt"), quote = F, sep=" ", row.names = T, col.names = F)
+write.table(x = gc_Flavo, file = paste0(data_folder, "Flavobacteriale_GTDB_14k_GC.txt"), quote = F, sep=" ", row.names = T, col.names = F)
+write.table(x = gc_Cyto, file = paste0(data_folder, "Cytophagale_GTDB_14k_GC.txt"), quote = F, sep=" ", row.names = T, col.names = F)
+```
+
+
+#### Alpha-proteobacteria
+After observing at the alpha-proteobacterial phylogeny, three large and monophyletic clades containing three single bacterial orders were apparent- Sphingomonadales, Rhodobacterales, and Rhizobiales. Another monophyletic clade (called Alpha1 in the thesis), containing multiple bacterial orders was also apparent. The largest subclade in this clade belonged to Acetobacterale order.
+```{r extract_Alphaproteo_subclades }
+Alphaproteo_taxa <- rownames(GTDB_14k_metadata)[grep(pattern = "Alphaproteobacteria", x = GTDB_14k_metadata[,"gtdb_taxonomy"], value = F, fixed = T)]
+Alphaproteo_mrca <- findMRCA(tree = GTDB_14k_tree, tips = Alphaproteo_taxa, type = "node")
+Alphaproteo_GTDB_14k_tree <- drop.tip(phy = GTDB_14k_tree, tip = setdiff(GTDB_14k_tree$tip.label, Alphaproteo_taxa_list))
+
+Rhizobiale_mrca <- getMRCA(phy = Alphaproteo_GTDB_14k_tree, tip = grep(pattern = "Rhizobiales", x = Alphaproteo_GTDB_14k_tree_labeled$tip.label))
+Rhizobiale_GTDB_14k_tree <- extract.clade(phy = Alphaproteo_GTDB_14k_tree, node = Rhizobiale_mrca)
+
+Alpha1_mrca <- getMRCA(phy = Alphaproteo_GTDB_14k_tree, tip = grep(pattern = "Tistrellales|Acetobacterales|Reyranallales|Thalassobaculales|Oceanibaculales|Eisterales|Micavibrionales|Azospirillales|Rhodospirillales", x = Alphaproteo_GTDB_14k_tree_labeled$tip.label))
+Alpha1_GTDB_14k_tree <- extract.clade(phy = Alphaproteo_GTDB_14k_tree, node = Alpha1_mrca)
+
+Sphingomonadale_mrca <- getMRCA(phy = Alphaproteo_GTDB_14k_tree, tip = grep(pattern = "Sphingomonadale", x = Alphaproteo_GTDB_14k_tree_labeled$tip.label))
+Sphingomonadale_GTDB_14k_tree <- extract.clade(phy = Alphaproteo_GTDB_14k_tree, node = Sphingomonadale_mrca)
+
+Rhodobacterale_mrca <- getMRCA(phy = Alphaproteo_GTDB_14k_tree, tip = grep(pattern = "Rhodobacterales|Caulobacterales|UBA1301", x = Alphaproteo_GTDB_14k_tree_labeled$tip.label))
+Rhodobacterale_GTDB_14k_tree <- extract.clade(phy = Alphaproteo_GTDB_14k_tree, node = Rhodobacterale_mrca)
+
+gc_Rhizob <- GTDB_14k_metadata[Rhizobiale_GTDB_14k_tree$tip.label, "gc_percentage"]
+names(gc_Rhizob) <- Rhizobiale_GTDB_14k_tree$tip.label
+Rhizobiale_GTDB_14k_tree_labeled <- Rhizobiale_GTDB_14k_tree
+Rhizobiale_GTDB_14k_tree_labeled$tip.label <- GTDB_14k_metadata[Rhizobiale_GTDB_14k_tree$tip.label, "gtdb_taxonomy"]
+
+gc_Alpha1 <- GTDB_14k_metadata[Alpha1_GTDB_14k_tree$tip.label, "gc_percentage"]
+names(gc_Alpha1) <- Alpha1_GTDB_14k_tree$tip.label
+Alpha1_GTDB_14k_tree_labeled <- Alpha1_GTDB_14k_tree
+Alpha1_GTDB_14k_tree_labeled$tip.label <- GTDB_14k_metadata[Alpha1_GTDB_14k_tree$tip.label, "gtdb_taxonomy"]
+
+gc_Sphingo <- GTDB_14k_metadata[Sphingomonadale_GTDB_14k_tree$tip.label, "gc_percentage"]
+names(gc_Sphingo) <- Sphingomonadale_GTDB_14k_tree$tip.label
+Sphingomonadale_GTDB_14k_tree_labeled <- Sphingomonadale_GTDB_14k_tree
+Sphingomonadale_GTDB_14k_tree_labeled$tip.label <- GTDB_14k_metadata[Sphingomonadale_GTDB_14k_tree$tip.label, "gtdb_taxonomy"]
+
+gc_Rhodo <- GTDB_14k_metadata[Rhodobacterale_GTDB_14k_tree$tip.label, "gc_percentage"]
+names(gc_Rhodo) <- Rhodobacterale_GTDB_14k_tree$tip.label
+Rhodobacterale_GTDB_14k_tree_labeled <- Rhodobacterale_GTDB_14k_tree
+Rhodobacterale_GTDB_14k_tree_labeled$tip.label <- GTDB_14k_metadata[Rhodobacterale_GTDB_14k_tree$tip.label, "gtdb_taxonomy"]
+```
+
+```{r write_Alphaproteo_subclade_data, eval=F }
+write.tree(phy = Rhizobiale_GTDB_14k_tree, file = paste0(data_folder, "Rhizobiale_GTDB_14k_tree.newick"))
+write.tree(phy = Alpha1_GTDB_14k_tree, file = paste0(data_folder, "Alpha1_GTDB_14k_tree.newick"))
+write.tree(phy = Sphingomonadale_GTDB_14k_tree, file = paste0(data_folder, "Sphingomonadale_GTDB_14k_tree.newick")
+write.tree(phy = Rhodobacterale_GTDB_14k_tree, file = paste0(data_folder, "Rhodobacterale_GTDB_14k_tree.newick"))
+
+Rhizobiale_GTDB_14k_tree$node.label <- NULL
+write.nexus(Rhizobiale_GTDB_14k_tree, file = paste0(data_folder, "Rhizobiale_GTDB_14k_tree.nexus"))
+Alpha1_GTDB_14k_tree$node.label <- NULL
+write.nexus(Alpha1_GTDB_14k_tree, file = paste0(data_folder, "Alpha1_GTDB_14k_tree.nexus"))
+Sphingomonadale_GTDB_14k_tree$node.label <- NULL
+write.nexus(Sphingomonadale_GTDB_14k_tree, file = paste0(data_folder, "Sphingomonadale_GTDB_14k_tree.nexus"))
+Rhodobacterale_GTDB_14k_tree$node.label <- NULL
+write.nexus(Rhodobacterale_GTDB_14k_tree, file = paste0(data_folder, "Rhodobacterale_GTDB_14k_tree.nexus"))
+
+write.table(x = gc_Rhizob, file = paste0(data_folder, "Rhizobiale_GTDB_14k_GC.txt"), quote = F, sep=" ", row.names = T, col.names = F)
+write.table(x = gc_Alpha1, file = paste0(data_folder, "Alpha1_GTDB_14k_GC.txt"), quote = F, sep=" ", row.names = T, col.names = F)
+write.table(x = gc_Sphingo, file = paste0(data_folder, "Sphingomonadale_GTDB_14k_GC.txt"), quote = F, sep=" ", row.names = T, col.names = F)
+write.table(x = gc_Rhodo, file = paste0(data_folder, "Rhodobacterale_GTDB_14k_GC.txt"), quote = F, sep=" ", row.names = T, col.names = F)
+```
+
+#### Gamma/Beta-proteobacteria
+In the GTDB phylogeny, beta-proteobacteria are an order-level clade nested within gamma-proteobacteria (instead of being a separate class).
+```{r Gammaproteo_clades }
+Gammaproteo_mrca <- getMRCA(phy = GTDB_14k_tree, tip = grep(pattern = "c__Gammaproteobacteria;", x = GTDB_14k_tree_labeled$tip.label))
+Gammaproteo_GTDB_14k_tree_labeled <- extract.clade(phy = GTDB_14k_tree_labeled, node = Gammaproteo_mrca)
+Gammaproteo_GTDB_14k_tree <- extract.clade(phy = GTDB_14k_tree, node = Gammaproteo_mrca)
+Gammaproteo_GTDB_14k_tree_labeled <- extract.clade(phy = GTDB_14k_tree_labeled, node = Gammaproteo_mrca)
+
+Pseudomonadale_mrca <- getMRCA(phy = Gammaproteo_GTDB_14k_tree, tip = grep(pattern = "o__Pseudomonadales;", x = Gammaproteo_GTDB_14k_tree_labeled$tip.label))
+Pseudomonadale_GTDB_14k_tree_labeled <- extract.clade(phy = Gammaproteo_GTDB_14k_tree_labeled, node = Pseudomonadale_mrca)
+Pseudomonadale_GTDB_14k_tree <- extract.clade(phy = Gammaproteo_GTDB_14k_tree, node = Pseudomonadale_mrca)
+
+Enterobacterales_mrca <- getMRCA(phy = Gammaproteo_GTDB_14k_tree, tip = grep(pattern = "o__Enterobacterales;", x = Gammaproteo_GTDB_14k_tree_labeled$tip.label))
+Enterobacterales_GTDB_14k_tree_labeled <- extract.clade(phy = Gammaproteo_GTDB_14k_tree_labeled, node = Enterobacterales_mrca)
+Enterobacterales_GTDB_14k_tree <- extract.clade(phy = Gammaproteo_GTDB_14k_tree, node = Enterobacterales_mrca)
+
+gc_Pseudomonadale <- GTDB_14k_metadata[Pseudomonadale_GTDB_14k_tree$tip.label, "gc_percentage"]
+names(gc_Pseudomonadale) <- Pseudomonadale_GTDB_14k_tree$tip.label
+
+gc_Enterobacterales <- GTDB_14k_metadata[Enterobacterales_GTDB_14k_tree$tip.label, "gc_percentage"]
+names(gc_Enterobacterales) <- Enterobacterales_GTDB_14k_tree$tip.label
+
+write.tree(phy = Pseudomonadale_GTDB_14k_tree, file = paste0(data_folder, "Pseudomonadale_GTDB_14k_tree.newick"))
+write.tree(phy = Enterobacterales_GTDB_14k_tree, file = paste0(data_folder, "Enterobacterales_GTDB_14k_tree.newick"))
+
+write.table(x = gc_Pseudomonadale, file = paste0(data_folder, "Pseudomonadale_GTDB_14k_GC.txt"), quote = F, sep=" ", row.names = T, col.names = F)
+write.table(x = gc_Enterobacterales, file = paste0(data_folder, "Enterobacterales_GTDB_14k_GC.txt"), quote = F, sep=" ", row.names = T, col.names = F)
+```
+
+```{r Betaproteo }
+remainingGamma_GTDB_14k_tree <- drop.tip(phy = Gammaproteo_GTDB_14k_tree, tip = c(Pseudomonadale_GTDB_14k_tree$tip.label, Enterobacterales_GTDB_14k_tree$tip.label))
+remainingGamma_GTDB_14k_tree_labeled <- drop.tip(phy = Gammaproteo_GTDB_14k_tree_labeled, tip = c(Pseudomonadale_GTDB_14k_tree_labeled$tip.label, Enterobacterales_GTDB_14k_tree_labeled$tip.label))
+
+gc_oi <- GTDB_14k_metadata[remainingGamma_GTDB_14k_tree$tip.label,"gc_percentage"]
+names(gc_oi) <- remainingGamma_GTDB_14k_tree_labeled$tip.label
+trait_oi <- gc_oi
+remainingGamma_GC_map <- contMap(tree = remainingGamma_GTDB_14k_tree_labeled, x = trait_oi, plot = F)
+
+svg(filename = paste0(data_folder, "remainingGamma_GTDB_14k_GC_labelled.svg"), width = 10, height = 50)
+plot(x = remainingGamma_GC_map, fsize = c(0.25, 2), lwd = 2, outline = F)
+dev.off()
+
+##After looking at the remaining clades
+Betaproteo_mrca <- getMRCA(phy = Gammaproteo_GTDB_14k_tree, tip = grep(pattern = "o__Betaproteobacteriales;", x = Gammaproteo_GTDB_14k_tree_labeled$tip.label))
+Betaproteo_GTDB_14k_tree_labeled <- extract.clade(phy = Gammaproteo_GTDB_14k_tree_labeled, node = Betaproteo_mrca)
+Betaproteo_GTDB_14k_tree <- extract.clade(phy = Gammaproteo_GTDB_14k_tree, node = Betaproteo_mrca)
+
+gc_Betaproteo <- GTDB_14k_metadata[Betaproteo_GTDB_14k_tree$tip.label, "gc_percentage"]
+names(gc_Betaproteo) <- Betaproteo_GTDB_14k_tree$tip.label
+
+write.tree(phy = Betaproteo_GTDB_14k_tree, file = paste0(data_folder, "Betaproteo_GTDB_14k_tree.newick"))
+write.table(x = gc_Betaproteo, file = paste0(data_folder, "Betaproteo_GTDB_14k_GC.txt"), quote = F, sep=" ", row.names = T, col.names = F)
+```

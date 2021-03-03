@@ -1,0 +1,19 @@
+,focal_habitat,sis_habitat,focal_metabolism,sis_metabolism
+Enterobacterales_jump1,NA|NA,NA,NA|NA,NA
+Enterobacterales_jump2,NA,NA,NA,NA
+Enterobacterales_jump3,host,NA,anaerobic,NA
+Enterobacterales_jump4,sediment|NA|sediment|host|host,NA|water|sediment|sediment|host|sediment|NA|sediment|host|sediment|host|host|NA|NA|NA|water|water|water|NA|NA|food|sediment|NA|NA,facultative|NA|facultative|facultative|facultative,NA|NA|facultative|aerobic|facultative|aerobic|NA|facultative|facultative|facultative|aerobic|aerobic|NA|aerobic|NA|facultative|facultative|facultative|anaerobic|NA|NA|facultative|NA|NA
+Enterobacterales_jump5,sediment|water,NA|water|NA|sediment|NA|NA|NA|NA|NA|water|water|NA|sediment|water|NA|NA|NA|water|NA|NA|sediment|food|NA|NA|water|NA|NA|NA|NA|water|NA|NA|water|NA|water|NA|NA|host|NA|NA|water|host|NA|NA|NA|water|water|NA|NA|NA|NA|water|NA|NA|water|water|NA|NA|host|host|host|host|host|NA|NA|water|water|NA|NA|NA|sediment|water|sediment|NA|NA|water|water|NA|water|NA|NA|NA|NA|water|NA|water|NA|water|NA|water|NA|NA|water|NA|NA|NA|sediment|NA|host|sediment|NA|NA|host|host|NA|NA|NA|NA|water|water|water,NA|NA,NA|aerobic|NA|facultative|NA|NA|NA|NA|NA|obligate aerobic|NA|NA|aerobic|aerobic|NA|NA|NA|aerobic|NA|NA|facultative|facultative|NA|NA|aerobic|NA|NA|NA|aerobic|aerobic|NA|NA|NA|NA|aerobic|facultative|NA|facultative|NA|NA|aerobic|obligate aerobic|NA|NA|NA|NA|aerobic|NA|NA|NA|NA|aerobic|NA|NA|aerobic|aerobic|NA|NA|facultative|facultative|facultative|facultative|facultative|facultative|NA|obligate aerobic|obligate aerobic|NA|NA|NA|NA|aerobic|aerobic|aerobic|NA|aerobic|aerobic|NA|aerobic|NA|NA|NA|NA|obligate aerobic|NA|NA|NA|aerobic|NA|aerobic|NA|NA|obligate aerobic|NA|NA|NA|NA|NA|facultative|facultative|NA|NA|facultative|facultative|NA|NA|NA|NA|NA|aerobic|aerobic
+Enterobacterales_jump6,NA,water|NA|NA|sediment,aerobic,aerobic|NA|NA|facultative
+Enterobacterales_jump7,water,host|host|host|host|host,aerobic,facultative|facultative|facultative|facultative|facultative
+Enterobacterales_jump8,host|host,NA|sediment|NA|host|sediment|NA|NA|host|host|NA,obligate aerobic|aerobic,NA|NA|NA|facultative|facultative|NA|NA|facultative|facultative|NA
+Enterobacterales_jump9,NA|host,NA,NA|aerobic,facultative
+Enterobacterales_jump10,host|host,host,NA|facultative,aerobic
+Enterobacterales_jump11,host,water|water,aerobic,facultative|aerobic
+Enterobacterales_jump12,NA|host|NA|NA|NA|NA|NA|host|host|host,NA|NA|host|NA,NA|NA|NA|NA|NA|NA|NA|NA|NA|NA,NA|NA|microaerophilic|NA
+Enterobacterales_jump13,NA,NA,NA,NA
+Enterobacterales_jump14,NA,NA,NA,NA
+Enterobacterales_jump15,host|NA|NA|host|NA|NA|host|NA|NA|host|host|host|host|host|host|host|host|host|host|host|host|host|host|host|host|NA|host|host|host|host|host|NA,host|NA|host,aerobic|NA|NA|aerobic|NA|NA|NA|NA|NA|NA|NA|NA|NA|NA|NA|NA|NA|NA|NA|NA|NA|NA|NA|NA|NA|NA|NA|NA|NA|NA|NA|NA,NA|NA|NA
+Enterobacterales_jump16,NA|soil|NA|host|NA|host|NA|soil|host|host|NA|host|NA|host|NA|soil,host|host|host|host|host|water|host|host|host|host,NA|aerobic|aerobic|NA|NA|aerobic|NA|aerobic|aerobic|aerobic|NA|facultative|aerobic|facultative|aerobic|NA,facultative|aerobic|aerobic|aerobic|aerobic|aerobic|aerobic|facultative|facultative|facultative
+Enterobacterales_jump17,NA,NA,NA,aerobic
+Enterobacterales_jump18,NA|NA,host|NA|host|host,NA|NA,aerobic|aerobic|aerobic|aerobic

@@ -1,0 +1,24 @@
+jumpBranch depth nTaxa_focal nTaxa_sis nTaxa_out1 nTaxa_out2
+jump1 5 outgroup1 1 12 19 505
+jump2 86 outgroup2 1 4 2 7
+jump3 104 outgroup2 2 4 1 7
+jump4 150 outgroup1 1 1 38 NA
+jump5 251 outgroup1 1 95 1 NA
+jump6 253 outgroup1 1 94 1 NA
+jump7 451 outgroup1 8 12 2 31
+jump8 456 outgroup2 1 1 5 1
+jump9 489 outgroup1 2 20 31 NA
+jump10 495 outgroup1 1 1 29 NA
+jump11 560 outgroup1 1 244 3 NA
+jump12 566 outgroup2 1 1 1 12
+jump13 599 outgroup2 2 2 1 1
+jump14 612 outgroup1 5 114 3 NA
+jump15 708 outgroup2 2 2 1 8
+jump16 848 outgroup1 2 128 99 NA
+jump17 855 outgroup1 1 7 4 31
+jump18 861 outgroup2 3 2 1 1
+jump19 876 outgroup1 31 12 56 NA
+jump20 893 outgroup2 1 2 7 19
+jump21 943 outgroup2 2 1 1 3
+jump22 1040 outgroup1 1 1 42 NA
+jump23 1064 outgroup2 1 2 1 1

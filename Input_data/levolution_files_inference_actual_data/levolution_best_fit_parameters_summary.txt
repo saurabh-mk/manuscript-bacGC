@@ -1,0 +1,14 @@
+LRT_p LRT_model root_state sig2 alpha lambda total_bLength exp_jumpNum alpha*lambda
+Sphingomonadale lévy 1.000e-16 55.84 21.03 1.00 2.436 17.66  43.00  2.4356
+Rhizobiale lévy 1.000e-16 63.80 17.17 1.00 3.566 30.91 110.21  3.5660
+Rhodobacterale lévy 1.000e-16 63.38 36.22 1.00 2.507 37.95  95.14  2.5072
+Alpha1 lévy 6.765e-16 62.84 56.25 0.50 4.096 26.96 110.41  2.0481
+Bacteroidale lévy 1.000e-16 40.10 71.67 0.25 2.411 74.29 179.14  0.6028
+Cytophagale lévy 5.558e-09 40.07 52.53 0.25 5.640 17.82 100.51  1.4101
+Flavobacteriale lévy 1.000e-16 39.89 15.85 1.00 6.498 45.05 292.72  6.4984
+Pseudomonadale lévy 1.000e-16 52.02 56.12 0.25 5.182 42.55 220.54  1.2956
+Enterobacterales lévy 1.000e-16 45.99 56.68 0.50 3.850 37.73 145.28  1.9251
+Betaproteo lévy 1.000e-16 58.12 37.38 0.50 6.065 54.86 332.76  3.0325
+Actinomycetale lévy 1.000e-16 71.51 13.04 2.00 5.732 45.74 262.15 11.4633
+Corynebacteriale lévy 1.000e-16 70.79 19.36 1.00 2.992 34.02 101.80  2.9922
+Streptomycetale lévy 7.122e-05 71.23 15.62 0.10 1.263 14.35  18.12  0.1263

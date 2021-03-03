@@ -1,0 +1,8 @@
+,focal_habitat,sis_habitat,focal_metabolism,sis_metabolism
+Alpha1_jump1,NA,water|NA|host|host|NA|NA|NA|bioreactor/digester,NA,NA|anaerobic|microaerophilic|NA|NA|NA|anaerobic|facultative
+Alpha1_jump2,NA,NA|host|NA|NA|rock|rock|NA|compost,NA,NA|aerobic|NA|NA|facultative|facultative|NA|anaerobic
+Alpha1_jump3,NA,NA,NA,NA
+Alpha1_jump4,NA,NA|NA|NA|NA|NA|NA,NA,NA|NA|NA|NA|NA|NA
+Alpha1_jump5,NA,water,NA,aerobic
+Alpha1_jump6,sediment|sediment,NA,NA|NA,NA
+Alpha1_jump7,host|NA,host|food|food|host|food|food|food|NA|host|food|food|host|NA|host|host|NA|NA|food|NA|host|food|food|NA|NA|bioreactor/digester|host|host|food|food|host|host|food|food|host|host|host|host,aerobic|NA,aerobic|aerobic|obligate aerobic|aerobic|aerobic|aerobic|aerobic|NA|aerobic|aerobic|NA|NA|NA|aerobic|aerobic|NA|NA|obligate aerobic|NA|aerobic|obligate aerobic|aerobic|NA|NA|aerobic|aerobic|aerobic|aerobic|aerobic|microaerophilic|obligate aerobic|aerobic|aerobic|NA|NA|NA|NA

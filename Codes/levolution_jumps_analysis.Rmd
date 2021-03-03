@@ -1,0 +1,556 @@
+---
+title: "Compare pairwise dN/dS for clades affected by GC jumps"
+output: html_notebook
+---
+
+### Background
+Previously, for a subset of datasets, I have tried estimating dN, dS using a non-stationary codon model. However, we now uspect that this model does not fit the data well leading to biased estimates of dN,dS on long branches. Therefore, I will now attempt an alternate approach. I will try to test for changes in other genomic proxies which can give indication of evolutionary forces acting on the genomes. These include- 
+1. dN/dS (inceased dN/dS indicates increased drift)
+2. CUB (decreased CUb indicates decreased Ne.s)
+3. rate of 16s rRNA evolution (increased rate indicates increased drift/mutation)
+4. genome size (reductions can be due to increased drift or increased streamlining selection)
+5. coding density (decrease indicates drift, increase indicates streamlinign selection)
+6. length of intergenic region (decrease indicates increased streamlining selection)
+
+estimate pairwise dN/dS within taxa of the focal clades (affected by jumps) and compare it with dN/dS of pairs in the corresponding sister or related clades.
+
+#### Common data and input processing
+```{r common_code }
+library(parallel)
+
+library(phytools)
+library(rncl)
+library(seqinr)
+
+library(tidyverse)
+library(reshape2)
+
+library(cowplot)
+library(viridis)
+library(ggpubr)
+library(patchwork)
+library(dendextend)
+
+n_cores_av <- 3
+
+main_dir <- "../"
+input_dir <- "../Input_data/"
+phylogenies_dir <- paste0(input_dir, "/phylogenies/")
+levolution_data_dir <- "../Input_data/levolution_files_inference_actual_data/"
+jump_common_dir <- "../Results/jump_analysis/"
+system2(command = "mkdir", args = c(jump_common_dir), stdout = F, stderr = F)
+
+GTDB_14k_tree <- read_newick_phylo(file = paste0(main_dir, "Input_data/phylogenies/GTDB_bac120_r80_pruned0.01.newick"))
+GTDB_14k_metadata <- read.delim(file = paste0(main_dir, "Input_data/phylogenies/GTDB_bac_metadata_r80_pruned0.01.tsv"), header = T, row.names = 1, stringsAsFactors = F)
+
+levolution_best_fit_parameters <- read.table(file = paste0(levolution_data_dir, "levolution_best_fit_parameters_summary.txt"), row.names = 1, header = T, stringsAsFactors = F)
+
+gd_base <- paste0(main_dir, "Input_data/GTDB_data/GTDB_")
+fn_types <- c("ass_fn", "ft_fn", "cds_fn", "rna_fn", "ftcnt_fn", "fna_fn", "gb_fn", "prot_fn")
+gdirs_oi <- c("assembly_reports/", "feature_tables/", "cds/", "rna/", "feature_counts/", "genomes/", "gb/", "proteins/")
+names(gdirs_oi) <- fn_types
+
+download_script <- paste0(main_dir, "Codes/download_all_genome_files_from_GCFonly.py")
+source(file = paste0(main_dir, "Codes/plotTree.wBars.R"))
+
+OLclades_oi <- c("Sphingomonadale", "Rhizobiale", "Rhodobacterale", "Alpha1", "Bacteroidale", "Cytophagale", "Flavobacteriale","Pseudomonadale", "Enterobacterales", "Betaproteo")
+p_folders <- c(rep("Alphaproteo",4), rep("Bacteroidetes",3), rep("Gammaproteo", 3))
+pp_cutoffs <- c(0.75,0.75,0.75,0.95,0.95,0.95,0.75, 0.9,0.9,0.9)
+alphas_oi <- c(1,1,1,0.5,0.25,0.25,1,0.25,0.5,0.5)
+config_oi <- 1
+
+get_genera_sp_names <- function(full_GTDB_taxonomy){
+  GTDB_fields <- strsplit(x = full_GTDB_taxonomy, split = ";g__")[[1]]
+  return(paste0("g__", GTDB_fields[2]))
+}
+
+clade_size_cutoff <- 20
+
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+##colorBlind_friendly_palette= black, orange, sky blue, bluish green, yellow, blue, vermillion, reddish purple
+```
+
+
+### Filtering datasets according to available clades and number of taxa
+I will first find which focal jumps have appropriate sister groups and outgroup clades for further analysis. Clades should have at least a sister group.
+
+I will also ignore focal jumps where sister or outgroup clades have more than 20 taxa, in order to make the downstream analysis more reliable and simpler. A large number of taxa in sister or outgroup clade increases the chances of heterogeneity in these groups used for comparison. These are treated separately.
+```{r levolution_jumpClades_filtering }
+for(OLclade_n in 1:length(OLclades_oi)){
+  OLclade_oi <- OLclades_oi[OLclade_n]
+  print(paste0("Analysing jumps within ", OLclade_oi))
+  pp_cutoff <- pp_cutoffs[OLclade_n]
+  alpha_oi <- alphas_oi[OLclade_n]
+  p_folder <- p_folders[OLclade_n]
+  res_dir <- out_dir <-  levolution_data_dir
+
+  tree_pp <- read.newick(file = paste0(res_dir,OLclade_oi,"_GTDB_14k_GC_config", config_oi, "_alpha", alpha_oi,".post"))
+  tree_in <- read.newick(paste0(phylogenies_dir,OLclade_oi,"_GTDB_14k_tree.newick"))
+  OLclade_nTips <- length(tree_in$tip.label) ##OL=OrderLevel
+  
+  OLclade_jumpBranches <- which(tree_pp$edge.length>pp_cutoff)
+  
+  jumpClade_details_colNames <- c("jumpBranch", "depth", "nTaxa_focal", "nTaxa_sis", "nTaxa_out1", "nTaxa_out2")
+  jumpClade_details <- data.frame(matrix(NA, nrow = length(OLclade_jumpBranches), ncol = length(jumpClade_details_colNames), dimnames = list(paste0("jump", 1:length(OLclade_jumpBranches)), jumpClade_details_colNames)))
+  # jumpClade_details <- read.table(file = paste0(jump_common_dir, OLclade_oi, "_jumpSummaries.tab"), stringsAsFactors = F)
+  
+  for(jumpNum_oi in 1:length(OLclade_jumpBranches)){
+    too_large <- F
+    print(jumpNum_oi)
+    jumpDir <- paste0(jump_common_dir, OLclade_oi, "_jump", jumpNum_oi, "/")
+    system2(command = "mkdir", args = c(jumpDir), stdout = F, stderr = F)
+
+    jumpBranch_oi <- OLclade_jumpBranches[jumpNum_oi]
+
+    anc_node <- tree_in$edge[jumpBranch_oi,1] #parent node of jump branch
+    focal_root <- tree_in$edge[jumpBranch_oi,2] #descendant node of jump branch
+    focal_descendants <- getDescendants(tree=tree_in, node=focal_root)
+    focal_tips <- intersect(1:OLclade_nTips, focal_descendants)
+    focal_tip_labels <- tree_in$tip.label[focal_tips]
+    write.table(focal_tip_labels, file = paste0(jumpDir, OLclade_oi, "_jump", jumpNum_oi, "_focalGTDBLabels.tab"), row.names = F, col.names = F)
+    nTaxa_focal <- length(focal_tips)
+    
+    ##check if there are any other, nested jumps in this focal clade
+    all_nestedFocalTips <- c()
+    nested_jumpBranches <- setdiff(intersect(OLclade_jumpBranches, which(tree_in$edge[,2] %in% focal_descendants)), jumpBranch_oi)
+    nested_focalNodes <- sapply(nested_jumpBranches, function(x) getDescendants(tree_in, tree_in$edge[x,2]))
+    nested_focalTips <- intersect(unlist(nested_focalNodes), 1:length(tree_in$tip.label))
+    all_nestedFocalTips <- nested_focalTips
+
+    sis_root <- setdiff(tree_in$edge[which(tree_in$edge[,1]==anc_node), 2], focal_root) #the other descendant of ancestral node
+    sis_branch <- intersect(which(tree_in$edge[,1]==anc_node),which(tree_in$edge[,2]==sis_root))
+    sis_descendants <- getDescendants(tree = tree_in, node = sis_root)
+    sis_tips <- intersect(1:length(tree_in$tip.label), sis_descendants)
+    sis_tip_labels <- tree_in$tip.label[sis_tips]
+    write.table(sis_tip_labels, file = paste0(jumpDir, OLclade_oi, "_jump", jumpNum_oi, "_sisGTDBLabels.tab"), row.names = F, col.names = F)
+    nTaxa_sis <- length(sis_tips)
+    
+    ##check if there are any additional, nested jumps in the sister clade
+    nested_jumpBranches <- intersect(OLclade_jumpBranches, which(tree_in$edge[,2] %in% c(sis_root, sis_descendants)))
+    nested_focalNodes <- sapply(nested_jumpBranches, function(x) getDescendants(tree_in, tree_in$edge[x,2]))
+    nested_focalTips <- intersect(unlist(nested_focalNodes), 1:length(tree_in$tip.label))
+    all_nestedFocalTips <- c(all_nestedFocalTips, nested_focalTips)
+
+    anc_out1 <- tree_in$edge[which(tree_in$edge[,2]==anc_node),1] #parent of ancestral node
+    
+    if(identical(anc_out1, numeric(0))){ #if ancestor of outgroup cant be found, most likely because focal clade diverges from the root, so there is no outgroup
+      print("cant find outgroup! Is focal clade at the root?")
+      if(all(c(nTaxa_focal, nTaxa_sis) <= clade_size_cutoff)){
+        jumpClade_details[paste0("jump", jumpNum_oi), ] <- c(jumpBranch_oi, "sister", nTaxa_focal, nTaxa_sis, NA, NA)
+      }else{
+        jumpClade_details[paste0("jump", jumpNum_oi), ] <- c(jumpBranch_oi, "focal", nTaxa_focal, nTaxa_sis, NA, NA)
+      }
+      write.table(tree_in$tip.label[all_nestedFocalTips], file = paste0(jumpDir, "nestedFocalTips.tab"), quote = F, row.names = F, col.names = F)
+      
+      next #skip this jump for remaining analysis
+    }
+    
+    out1_root <- setdiff(tree_in$edge[which(tree_in$edge[,1]==anc_out1),2],anc_node)
+    out1_branch <- intersect(which(tree_in$edge[,1]==anc_out1),which(tree_in$edge[,2]==out1_root))
+    out1_descendants <- getDescendants(tree=tree_in, node=out1_root)
+    out1_tips <- intersect(1:length(tree_in$tip.label), out1_descendants)
+    out1_tip_labels <- tree_in$tip.label[out1_tips]
+    write.table(out1_tip_labels, file = paste0(jumpDir, OLclade_oi, "_jump", jumpNum_oi, "_out1GTDBLabels.tab"), row.names = F, col.names = F)
+    nTaxa_out1 <- length(out1_tips)
+    
+    ##check if there are any additional, nested jumps in the outgroup clades
+    nested_jumpBranches <- intersect(OLclade_jumpBranches, which(tree_in$edge[,2] %in% c(out1_root, out1_descendants)))
+    nested_focalNodes <- sapply(nested_jumpBranches, function(x) getDescendants(tree_in, tree_in$edge[x,2]))
+    nested_focalTips <- intersect(unlist(nested_focalNodes), 1:length(tree_in$tip.label))
+    all_nestedFocalTips <- c(all_nestedFocalTips, nested_focalTips)
+    
+    anc_out2 <- tree_in$edge[which(tree_in$edge[,2]==anc_out1),1] #parent of ancestor of first outgroup
+    if(identical(anc_out2, numeric(0))){ #if ancestor of 2nd outgroup cant be found, most likely because 1st outgroup diverges from root, so there is no other outgroup
+      print("cant find 2nd outgroup! Is 1st outgroup at the root?")
+      
+      ##if focal, sister and outgroup1 have limited taxa
+      if(all(c(nTaxa_focal, nTaxa_sis, nTaxa_out1)  <=  clade_size_cutoff)){
+        #extract focal_clade
+        focal_clade_tree <- extract.clade(tree_in, anc_out1)
+        jumpClade_details[paste0("jump", jumpNum_oi), ] <- c(jumpBranch_oi, "outgroup1", nTaxa_focal, nTaxa_sis, nTaxa_out1, NA)
+        write.table(tree_in$tip.label[all_nestedFocalTips], file = paste0(jumpDir, "nestedFocalTips.tab"), quote = F, row.names = F, col.names = F)
+      }else if(all(c(nTaxa_focal, nTaxa_sis) <= clade_size_cutoff)){
+        # focal_clade_tree <- extract.clade(tree_in, anc_node)
+        # jumpClade_details[paste0("jump", jumpNum_oi), ] <- c(jumpBranch_oi, "sister", nTaxa_focal, nTaxa_sis, nTaxa_out1, NA)
+        # write.table(tree_in$tip.label[all_nestedFocalTips], file = paste0(jumpDir, "nestedFocalTips.tab"), quote = F, row.names = F, col.names = F)
+        print("Either focal, sister, or outgroup clade is too large. Will not analyze this jump directly.")
+        jumpClade_details[paste0("jump", jumpNum_oi), ] <- c(jumpBranch_oi, "outgroup1", nTaxa_focal, nTaxa_sis, nTaxa_out1, NA)
+        write.table(tree_in$tip.label[all_nestedFocalTips], file = paste0(jumpDir, "nestedFocalTips.tab"), quote = F, row.names = F, col.names = F)
+        too_large <- T
+      }else{
+        print("Either focal, sister, or outgroup clade is too large. Will not analyze this jump directly.")
+        jumpClade_details[paste0("jump", jumpNum_oi), ] <- c(jumpBranch_oi, "outgroup1", nTaxa_focal, nTaxa_sis, nTaxa_out1, NA)
+        write.table(tree_in$tip.label[all_nestedFocalTips], file = paste0(jumpDir, "nestedFocalTips.tab"), quote = F, row.names = F, col.names = F)
+        too_large <- T
+      } ##end of if, focal, sister, and outgroup1 have limited taxa
+      
+      if(exists("too_large")) next ##skip this jump if focal or sister clades are too large #these are dealt with separately
+      
+      #if focal, sister, and first outgroup are small, identify edges for coloring
+      if(nTaxa_focal == 1){
+        focal_edges <- which(focal_clade_tree$edge[,2]==which(focal_clade_tree$tip.label==focal_tip_labels))
+      }else if(nTaxa_focal > 1){
+        clade_tree_focal_root <- getMRCA(focal_clade_tree, focal_tip_labels)
+        focal_edges <- which(focal_clade_tree$edge[,2] %in% c(clade_tree_focal_root, getDescendants(focal_clade_tree, clade_tree_focal_root)))
+      }
+  
+      if(nTaxa_sis == 1){
+        sis_edges <- which(focal_clade_tree$edge[,2]==which(focal_clade_tree$tip.label==sis_tip_labels))
+      }else if(nTaxa_sis > 1){
+        clade_tree_sis_root <- getMRCA(focal_clade_tree, sis_tip_labels)
+        sis_edges <- which(focal_clade_tree$edge[,2] %in% c(clade_tree_sis_root, getDescendants(focal_clade_tree, clade_tree_sis_root)))
+      }
+      
+      edge_colors <- rep("black", length(focal_clade_tree$edge.length))
+      edge_colors[focal_edges] <- "orange"
+      edge_colors[sis_edges] <- "purple"
+  
+      #change labels to species names for plotting
+      focal_clade_tree_labeled <- focal_clade_tree
+      focal_clade_tree_labeled$tip.label <- sapply(focal_clade_tree$tip.label, function(x) get_genera_sp_names(GTDB_14k_metadata[x,"gtdb_taxonomy"]), simplify = T, USE.NAMES = F)
+      
+      #plot tree for reference
+      svg(filename = paste0(jumpDir, OLclade_oi, "_jump", jumpNum_oi, "_cladeTree.svg"), width = max(max(nodeHeights(focal_clade_tree))*50,5), height = max(length(focal_clade_tree$tip.label)*0.5, 3))
+      plot(focal_clade_tree, edge.color = edge_colors, edge.width = 2)
+      add.scale.bar()
+      dev.off()
+      
+      svg(filename = paste0(jumpDir, OLclade_oi, "_jump", jumpNum_oi, "_cladeTree_labeled.svg"), width = max(max(nodeHeights(focal_clade_tree_labeled))*50,5), height = max(length(focal_clade_tree_labeled$tip.label)*0.5, 5))
+      plot(focal_clade_tree_labeled, edge.color = edge_colors, edge.width = 2)
+      add.scale.bar()
+      dev.off()
+      
+      write.tree(focal_clade_tree, file = paste0(jumpDir, OLclade_oi, "_jump", jumpNum_oi, ".newick"))
+      write.tree(focal_clade_tree_labeled, file = paste0(jumpDir, OLclade_oi, "_jump", jumpNum_oi, "_labeled.newick"))
+      
+      next #skip this jump now
+    }##end of if, outgroup 2 not found
+    
+    ##if outgroup2 is found, we continue
+    out2_root <- setdiff(tree_in$edge[which(tree_in$edge[,1]==anc_out2),2],anc_out1)
+    out2_branch <- intersect(which(tree_in$edge[,1]==anc_out2),which(tree_in$edge[,2]==out2_root))
+    out2_descendants <- getDescendants(tree=tree_in, node=out2_root)
+    out2_tips <- intersect(1:length(tree_in$tip.label), out2_descendants)
+    out2_tip_labels <- tree_in$tip.label[out2_tips]
+    write.table(out2_tip_labels, file = paste0(jumpDir, OLclade_oi, "_jump", jumpNum_oi, "_out2GTDBLabels.tab"), row.names = F, col.names = F)
+    nTaxa_out2 <- length(out2_tips)
+    
+    ##check if there are any additional, nested jumps in the outgroup2 clades
+    nested_jumpBranches <- intersect(OLclade_jumpBranches, which(tree_in$edge[,2] %in% c(out2_root, out2_descendants)))
+    nested_focalNodes <- sapply(nested_jumpBranches, function(x) getDescendants(tree_in, tree_in$edge[x,2]))
+    nested_focalTips <- intersect(unlist(nested_focalNodes), 1:length(tree_in$tip.label))
+    all_nestedFocalTips <- c(all_nestedFocalTips, nested_focalTips)
+    write.table(tree_in$tip.label[all_nestedFocalTips], file = paste0(jumpDir, "nestedFocalTips.tab"), quote = F, row.names = F, col.names = F)
+    
+    if(all(c(nTaxa_focal, nTaxa_sis, nTaxa_out1, nTaxa_out2) <=  clade_size_cutoff)){
+      focal_clade_tree <- extract.clade(tree_in, anc_out2)
+      jumpClade_details[paste0("jump", jumpNum_oi), ] <- c(jumpBranch_oi, "outgroup2", nTaxa_focal, nTaxa_sis, nTaxa_out1, nTaxa_out2)
+    }else if(all(c(nTaxa_focal, nTaxa_sis, nTaxa_out1) <=  clade_size_cutoff)){
+      focal_clade_tree <- extract.clade(tree_in, anc_out1)
+      jumpClade_details[paste0("jump", jumpNum_oi), ] <- c(jumpBranch_oi, "outgroup1", nTaxa_focal, nTaxa_sis, nTaxa_out1, nTaxa_out2)
+    }else if(all(c(nTaxa_focal, nTaxa_sis)  <=  clade_size_cutoff)){
+      print("Either focal, sister, or outgroup clade is too large. Will not analyze this jump directly.")
+      jumpClade_details[paste0("jump", jumpNum_oi), ] <- c(jumpBranch_oi, "outgroup1", nTaxa_focal, nTaxa_sis, nTaxa_out1, NA)
+      write.table(tree_in$tip.label[all_nestedFocalTips], file = paste0(jumpDir, "nestedFocalTips.tab"), quote = F, row.names = F, col.names = F)
+      too_large <- T
+    }else{
+      print("Either focal, sister, or outgroup clade is too large. Will not analyze this jump directly.")
+      jumpClade_details[paste0("jump", jumpNum_oi), ] <- c(jumpBranch_oi, "outgroup1", nTaxa_focal, nTaxa_sis, nTaxa_out1, NA)
+      write.table(tree_in$tip.label[all_nestedFocalTips], file = paste0(jumpDir, "nestedFocalTips.tab"), quote = F, row.names = F, col.names = F)
+      too_large <- T
+    }
+    
+    if(too_large==T){
+      next ##skip this jump if focal or sister clades are too large #these are dealt with separately
+    } 
+    
+    ##idenitfy edges for coloring
+    if(nTaxa_focal == 1){
+      focal_edges <- which(focal_clade_tree$edge[,2]==which(focal_clade_tree$tip.label==focal_tip_labels))
+    }else if(nTaxa_focal > 1){
+      clade_tree_focal_root <- getMRCA(focal_clade_tree, focal_tip_labels)
+      focal_edges <- which(focal_clade_tree$edge[,2] %in% c(clade_tree_focal_root, getDescendants(focal_clade_tree, clade_tree_focal_root)))
+    }
+    
+    if(nTaxa_sis == 1){
+      sis_edges <- which(focal_clade_tree$edge[,2]==which(focal_clade_tree$tip.label==sis_tip_labels))
+    }else if(nTaxa_sis > 1){
+      clade_tree_sis_root <- getMRCA(focal_clade_tree, sis_tip_labels)
+      sis_edges <- which(focal_clade_tree$edge[,2] %in% c(clade_tree_sis_root, getDescendants(focal_clade_tree, clade_tree_sis_root)))
+    }
+    
+    edge_colors <- rep("black", length(focal_clade_tree$edge.length))
+    edge_colors[focal_edges] <- "orange"
+    edge_colors[sis_edges] <- "purple"
+
+    #change labels to species names for plotting
+    focal_clade_tree_labeled <- focal_clade_tree
+    focal_clade_tree_labeled$tip.label <- sapply(focal_clade_tree$tip.label, function(x) get_genera_sp_names(GTDB_14k_metadata[x,"gtdb_taxonomy"]), simplify = T, USE.NAMES = F)
+    
+    #plot tree for reference
+    svg(filename = paste0(jumpDir, OLclade_oi, "_jump", jumpNum_oi, "_cladeTree.svg"), width = max(max(nodeHeights(focal_clade_tree))*50,5), height = max(length(focal_clade_tree$tip.label)*0.5, 3))
+    plot(focal_clade_tree, edge.color = edge_colors, edge.width = 2)
+    add.scale.bar()
+    dev.off()
+    
+    svg(filename = paste0(jumpDir, OLclade_oi, "_jump", jumpNum_oi, "_cladeTree_labeled.svg"), width = max(max(nodeHeights(focal_clade_tree_labeled))*50,5), height = max(length(focal_clade_tree_labeled$tip.label)*0.5, 5))
+    plot(focal_clade_tree_labeled, edge.color = edge_colors, edge.width = 2)
+    add.scale.bar()
+    dev.off()
+    
+    write.tree(focal_clade_tree, file = paste0(jumpDir, OLclade_oi, "_jump", jumpNum_oi, ".newick"))
+    write.tree(focal_clade_tree_labeled, file = paste0(jumpDir, OLclade_oi, "_jump", jumpNum_oi, "_labeled.newick"))
+  }#finish looping over jumps within a order-level clade
+  write.table(jumpClade_details, file = paste0(jump_common_dir, OLclade_oi, "_jumpSummaries.tab"), quote = F)
+}#finish looping over order-level clades
+```
+
+### Genome properties analysis
+Here, I will analyze the changes in GC content and genome size, coding density, and protein branch lengths.
+
+#### Extract genome properties
+```{r extract_genome_properties }
+for(OLclade_n in 1:length(OLclades_oi)){
+  OLclade_oi <- OLclades_oi[OLclade_n]
+  print(paste0("Analysing jumps within ", OLclade_oi))
+  pp_cutoff <- pp_cutoffs[OLclade_n]
+  alpha_oi <- alphas_oi[OLclade_n]
+  p_folder <- p_folders[OLclade_n]
+  res_dir <- out_dir <-  levolution_data_dir
+
+  tree_pp <- read.newick(file = paste0(res_dir, OLclade_oi,"_GTDB_14k_GC_config", config_oi, "_alpha", alpha_oi,".post"))
+  tree_in <- read.newick(paste0(phylogenies_dir,OLclade_oi,"_GTDB_14k_tree.newick"))
+  OLclade_nTips <- length(tree_in$tip.label) ##OL=OrderLevel
+  OLclade_jumpBranches <- which(tree_pp$edge.length>pp_cutoff)
+  
+  jumpClade_details <- read.table(file = paste0(jump_common_dir, OLclade_oi, "_jumpSummaries.tab"), stringsAsFactors = F)
+  
+  colNames_genome_details <- c("focal_GC", "sis_GC")
+  genome_details <- as.data.frame(matrix(data = NA, nrow = nrow(jumpClade_details), ncol = length(colNames_genome_details), dimnames = list(paste0(OLclade_oi, "_jump", 1:nrow(jumpClade_details)), colNames_genome_details)))
+  
+  for(jumpNum_oi in which(jumpClade_details$depth %in% c("sister", "outgroup1", "outgroup2"))){#only for those jumps which are analyzable
+    print(paste0("Extracting genome information for jump number ", jumpNum_oi))
+    
+    jumpDir <- paste0(jump_common_dir, OLclade_oi, "_jump", jumpNum_oi, "/")
+    
+    nested_focalTip_labels <- tryCatch({
+      read.table(file = paste0(jumpDir, "nestedFocalTips.tab"), stringsAsFactors = F)$V1
+    }, error=function(e){
+      print(e)
+      return(NA)
+    })
+    
+    focal_GTDBLabels <- read.table(paste0(jumpDir, OLclade_oi,"_jump",jumpNum_oi,"_focalGTDBLabels.tab"), stringsAsFactors = F, header = F)
+    focal_GTDBLabels_valid <- setdiff(focal_GTDBLabels$V1, nested_focalTip_labels)
+    
+    sis_GTDBLabels <- read.table(paste0(jumpDir,OLclade_oi,"_jump",jumpNum_oi,"_sisGTDBLabels.tab"), stringsAsFactors = F, header = F)
+    sis_GTDBLabels_valid <- setdiff(sis_GTDBLabels$V1, nested_focalTip_labels)
+    
+    if(jumpClade_details[paste0("jump",jumpNum_oi), "depth"] %in% c("outgroup1", "outgroup2")){
+      out1_GTDBLabels <- read.table(paste0(jumpDir,OLclade_oi,"_jump",jumpNum_oi,"_out1GTDBLabels.tab"), stringsAsFactors = F, header = F)
+      out1_GTDBLabels_valid <- setdiff(out1_GTDBLabels$V1, nested_focalTip_labels)
+    }
+    
+    if(jumpClade_details[paste0("jump",jumpNum_oi), "depth"]=="outgroup2"){
+      out2_GTDBLabels <- read.table(paste0(jumpDir,OLclade_oi,"_jump",jumpNum_oi,"_out2GTDBLabels.tab"), stringsAsFactors = F, header = F)
+      out2_GTDBLabels_valid <- setdiff(out2_GTDBLabels$V1, nested_focalTip_labels)
+    }
+    
+    focal_GC <- median(GTDB_14k_metadata[focal_GTDBLabels_valid,"gc_percentage"])
+    sis_GC <- median(GTDB_14k_metadata[sis_GTDBLabels_valid,"gc_percentage"])
+    genome_details[paste0(OLclade_oi, "_jump", jumpNum_oi),] <- c(focal_GC, sis_GC)
+  }##end of loop over jumps in a clade
+  write.table(genome_details, file = paste0(jump_common_dir, OLclade_oi, "_genome_details.tab"), quote = F)
+} ##end of loop over order level clades
+```
+
+
+#### Plotting of genome comparisons
+```{r write_all_genome }
+all_genome_comparisons <- do.call(rbind, lapply(OLclades_oi, function(x) read.table(paste0(jump_common_dir,x,"_genome_details.tab"), stringsAsFactors = F, header = T, row.names = 1)))
+write.table(all_genome_comparisons, file = paste0(jump_common_dir, "levolution_jumps_genome_comparison.tab"), quote = F)
+```
+
+### Lifestyle properties analysis
+Recently an integrated dataset of lifestyle properties has become available. It integrates data from various sources, but at the species level. Lets see if we can extract some features from it. I will first focus on habitat- soil vs aquatic, and metabolism- aerobic vs rest.
+
+#### Extract lifestyle properties
+```{r extract_lifestyle_properties }
+taxmap_gtdb <- read.csv(paste0(input_dir, "trait_data/taxmap_gtdb.csv"), stringsAsFactors=F, row.names = 1)
+trait_data_gtdb <- read.csv(paste0(input_dir, "trait_data/condensed_species_GTDB.csv"), stringsAsFactors=F, row.names = 1)
+trait_data_ncbi <- read.csv(paste0(input_dir, "trait_data/condensed_species_NCBI.csv"), stringsAsFactors=F, row.names = 1)
+
+for(OLclade_n in 1:length(OLclades_oi)){
+  OLclade_oi <- OLclades_oi[OLclade_n]
+  print(paste0("Analysing jumps within ", OLclade_oi))
+  pp_cutoff <- pp_cutoffs[OLclade_n]
+  alpha_oi <- alphas_oi[OLclade_n]
+  p_folder <- p_folders[OLclade_n]
+  res_dir <- out_dir <-  levolution_data_dir
+
+  tree_pp <- read.newick(file = paste0(res_dir,OLclade_oi,"_GTDB_14k_GC_config", config_oi, "_alpha", alpha_oi,".post"))
+  tree_in <- read.newick(paste0(phylogenies_dir,OLclade_oi,"_GTDB_14k_tree.newick"))
+  OLclade_nTips <- length(tree_in$tip.label) ##OL=OrderLevel
+  OLclade_jumpBranches <- which(tree_pp$edge.length>pp_cutoff)
+  
+  jumpClade_details <- read.table(file = paste0(jump_common_dir, OLclade_oi, "_jumpSummaries.tab"), stringsAsFactors = F)
+  
+  colNames_lifestyle_details <- c("focal_habitat", "sis_habitat", "focal_metabolism", "sis_metabolism")
+  lifestyle_details <- as.data.frame(matrix(data = NA, nrow = nrow(jumpClade_details), ncol = length(colNames_lifestyle_details), dimnames = list(paste0(OLclade_oi, "_jump", 1:nrow(jumpClade_details)), colNames_lifestyle_details)))
+  
+  for(jumpNum_oi in which(jumpClade_details$depth %in% c("sister", "outgroup1", "outgroup2"))){#only for those jumps which are analyzable
+    print(paste0("Extracting genome information for jump number ", jumpNum_oi))
+    
+    jumpDir <- paste0(jump_common_dir, OLclade_oi, "_jump", jumpNum_oi, "/")
+    
+    nested_focalTip_labels <- tryCatch({
+      read.table(file = paste0(jumpDir, "nestedFocalTips.tab"), stringsAsFactors = F)$V1
+    }, error=function(e){
+      print(e)
+      return(NA)
+    })
+    
+    focal_GTDBLabels <- read.table(paste0(jumpDir, OLclade_oi,"_jump",jumpNum_oi,"_focalGTDBLabels.tab"), stringsAsFactors = F, header = F)
+    focal_GTDBLabels_valid <- setdiff(focal_GTDBLabels$V1, nested_focalTip_labels)
+    
+    sis_GTDBLabels <- read.table(paste0(jumpDir,OLclade_oi,"_jump",jumpNum_oi,"_sisGTDBLabels.tab"), stringsAsFactors = F, header = F)
+    sis_GTDBLabels_valid <- setdiff(sis_GTDBLabels$V1, nested_focalTip_labels)
+    
+    out1_accNums <- NA
+    if(jumpClade_details[paste0("jump",jumpNum_oi), "depth"] %in% c("outgroup1", "outgroup2")){
+      out1_GTDBLabels <- read.table(paste0(jumpDir,OLclade_oi,"_jump",jumpNum_oi,"_out1GTDBLabels.tab"), stringsAsFactors = F, header = F)
+      out1_GTDBLabels_valid <- setdiff(out1_GTDBLabels$V1, nested_focalTip_labels)
+    }
+    
+    out2_accNums <- NA
+    if(jumpClade_details[paste0("jump",jumpNum_oi), "depth"]=="outgroup2"){
+      out2_GTDBLabels <- read.table(paste0(jumpDir,OLclade_oi,"_jump",jumpNum_oi,"_out2GTDBLabels.tab"), stringsAsFactors = F, header = F)
+      out2_GTDBLabels_valid <- setdiff(out2_GTDBLabels$V1, nested_focalTip_labels)
+    }
+    
+    focal_metabolisms <- paste0(sapply(sapply(focal_GTDBLabels_valid, function(x) taxmap_gtdb[x, "ncbi_species_taxid"]), function(y) trait_data_gtdb[as.character(y), "metabolism"]), collapse = "|")
+    sis_metabolisms <- paste0(sapply(sapply(sis_GTDBLabels_valid, function(x) taxmap_gtdb[x, "ncbi_species_taxid"]), function(y) trait_data_gtdb[as.character(y), "metabolism"]),collapse = "|")
+    focal_habitat <- paste0(sapply(sapply(focal_GTDBLabels_valid, function(x) taxmap_gtdb[x, "ncbi_species_taxid"]), function(y) strsplit(trait_data_gtdb[as.character(y), "isolation_source"], "_")[[1]][1]), collapse = "|")
+    sis_habitat <- paste0(sapply(sapply(sis_GTDBLabels_valid, function(x) taxmap_gtdb[x, "ncbi_species_taxid"]), function(y) strsplit(trait_data_gtdb[as.character(y), "isolation_source"], "_")[[1]][1]),collapse = "|")
+    
+    lifestyle_details[paste0(OLclade_oi, "_jump", jumpNum_oi),] <- c(focal_habitat, sis_habitat, focal_metabolisms, sis_metabolisms)
+  }##end of loop over jumps in a clade
+  write.csv(lifestyle_details, file = paste0(jump_common_dir, OLclade_oi, "_lifestyle_details.csv"), quote = F)
+} ##end of loop over order level clades
+```
+
+#### Collating of lifestyle comparisons
+```{r write_all_lifestyle }
+all_lifestyle_comparisons <- do.call(rbind, lapply(OLclades_oi, function(x) read.csv(paste0(jump_common_dir,x,"_lifestyle_details.csv"), stringsAsFactors = F, header = T, row.names = 1)))
+write.csv(all_lifestyle_comparisons, file = paste0(jump_common_dir, "levolution_jumps_lifestyle_comparison.csv"), quote = F)
+```
+
+### Collate all data
+```{r collate_summary_data }
+all_summaries <- do.call(rbind, lapply(OLclades_oi, function(x) read.table(paste0(jump_common_dir,x,"_jumpSummaries.tab"), stringsAsFactors = F, header = T, row.names = paste0(x,"_jump",1:nrow(read.table(paste0(jump_common_dir,x,"_jumpSummaries.tab"))) ))))
+write.table(all_summaries, file = paste0(jump_common_dir, "levolution_jumps_feature_summaries.tab"), quote = F)
+```
+
+
+### Analysis for manuscript
+#### Collate and write data
+```{r write_all_features_data }
+### Average GC
+all_genome_comparisons <- read.table(file = paste0(jump_common_dir,"levolution_jumps_genome_comparison.tab"), stringsAsFactors = F)
+all_features_df <- round(all_genome_comparisons[,c("focal_GC", "sis_GC")], 2)
+
+all_features_df$deltaGC <- all_features_df$focal_GC - all_features_df$sis_GC
+all_features_df$signGC <- as.factor(sign(all_features_df$deltaGC))
+
+###habitat and metabolism
+all_features_df$sis_Isolation <- all_features_df$focal_Isolation <- all_features_df$sis_Metabolism <- all_features_df$focal_Metabolism <-  NA
+all_lifestyle_comparisons <- read.csv(file = paste0(jump_common_dir,"levolution_jumps_lifestyle_comparison.csv"), stringsAsFactors = F, row.names = 1)
+all_features_df[, c("focal_Isolation", "sis_Isolation", "focal_Metabolism", "sis_Metabolism")] <- all_lifestyle_comparisons[, c("focal_habitat", "sis_habitat", "focal_metabolism", "sis_metabolism")]
+
+isolation_not_covered <- sapply(rownames(all_features_df), function(x) all(is.na(all_features_df[x, c("focal_Isolation", "sis_Isolation")])) )
+metabolism_not_covered <- sapply(rownames(all_features_df), function(x) all(is.na(all_features_df[x, c("focal_Metabolism", "sis_Metabolism")])) )
+
+endosymbiont_status <- read.csv(paste0(input_dir, "all_jumps_endosymbionts_status.csv"), row.names = 1, stringsAsFactors = F)
+all_features_df$endoSymb_status <- sapply(rownames(all_features_df), function(ds) ifelse(endosymbiont_status[ds, "status"]=="Endosymbiont" | endosymbiont_status[ds, "status"]=="Obligate pathogen", 1, 0))
+all_features_df$endoSymb_status <- factor(all_features_df$endoSymb_status)
+
+colnames(all_features_df) <- c("focal_GC", "sister_GC", "delta_GC", "directionGC",  "focal_metabolism", "sister_metabolism", "focal_isolation", "sister_isolation", "endoSymb_status")
+
+write.table(all_features_df, file = paste0(jump_common_dir, "all_features_comparison_table.tab"))
+View(all_features_df)
+
+invalid_datasets <- c("Flavobacteriale_jump23", "Flavobacteriale_jump24", "Enterobacterales_jump15", "Flavobacteriale_jump1", "Rhodobacterale_jump7", "Sphingomonadale_jump1")
+all_features_df_valid <- all_features_df[setdiff(rownames(all_features_df), invalid_datasets),]
+write.table(all_features_df_valid, file = paste0(jump_common_dir, "all_features_comparison_table_valid.tab"))
+```
+
+#### Read back all files
+So that we dont have to collate them every time for subsequent analysis.
+```{r read_meta_files }
+all_features_df <- read.table(file = paste0(jump_common_dir, "all_features_comparison_table.tab"), stringsAsFactors = F)
+all_features_df_valid <- read.table(file = paste0(jump_common_dir, "all_features_comparison_table_valid.tab"), stringsAsFactors = F, check.names = F)
+```
+
+#### deltaGC distribution
+```{r deltaGC_distribution_plt }
+downward_GCjumps_stats <- subset(all_features_df_valid, `delta_GC` < 0)
+upward_GCjumps_stats <- subset(all_features_df_valid,  `delta_GC` > 0)
+
+deltaGC_hist <- ggplot(all_features_df_valid, aes(x =  `delta_GC`, fill=as.factor( `delta_GC`/abs(`delta_GC`)))) + geom_histogram(binwidth = 2, na.rm = T, col="black") + ggtitle("Distribution of GC jump magnitudes")
+
+deltaGC_hist <- deltaGC_hist + scale_x_continuous(name = expression(Delta*"GC (affected \u2013 unaffected)"), breaks = seq(-35,25,5), labels=seq(-35,25,5)) + scale_y_continuous(name="number of jumps") + scale_fill_grey(name=expression("direction"), labels=c(paste0("downward\n(n=", length(which(all_features_df_valid$delta_GC<0)), ")"), paste0("upward\n(n=", length(which(all_features_df_valid$delta_GC>0)), ")")), start = 0.2, end=0.8)
+
+deltaGC_hist <- deltaGC_hist + geom_segment(data = subset(all_features_df_valid,  `delta_GC` < 0),mapping = aes(x=median(`delta_GC`), y=1, xend=median(`delta_GC`), yend=0), arrow = arrow(type = "closed", length = unit(x = 1, units = "picas"), ends = "last")) + geom_segment(data = subset(all_features_df_valid,  `delta_GC` > 0),mapping = aes(x=median(`delta_GC`), y=1, xend=median(`delta_GC`), yend=0), arrow = arrow(type = "closed", length = unit(x = 1, units = "picas"), ends = "last"))
+
+deltaGC_hist <- deltaGC_hist + theme_cowplot() + theme(legend.position = c(0.05,0.85), legend.title.align = 0.5, plot.title = element_text(hjust = 0.5))
+
+save_plot(filename = paste0(jump_common_dir, "deltaGC_hist_grey.svg"), plot = deltaGC_hist, ncol = 1, base_width = 7.2, base_height = 4)
+save_plot(filename = paste0(jump_common_dir, "deltaGC_hist_grey.png"), plot = deltaGC_hist, ncol = 1, base_width = 7.2, base_height = 4)
+deltaGC_hist
+
+print("medians")
+median(downward_GCjumps_stats$`delta_GC`, na.rm = T)
+median(upward_GCjumps_stats$`delta_GC`, na.rm = T)
+
+print("quartiles")
+quantile(downward_GCjumps_stats$`delta_GC`,0.25)
+quantile(upward_GCjumps_stats$`delta_GC`,0.75)
+
+print("fraction above 10%")
+length(which(downward_GCjumps_stats$`delta_GC`< (-10)))/nrow(downward_GCjumps_stats)
+
+length(which(upward_GCjumps_stats$`delta_GC` > (10)))/nrow(upward_GCjumps_stats)
+
+print("fraction above 15%")
+length(which(downward_GCjumps_stats$`delta_GC`< (-15)))/nrow(downward_GCjumps_stats)
+
+length(which(upward_GCjumps_stats$`delta_GC` > (15)))/nrow(upward_GCjumps_stats)
+```
+
+#### deltaGC vs GC
+```{r deltaGC_vs_GC_plot }
+bestFit_params <- read.table(paste0(levolution_data_dir, "levolution_best_fit_parameters_summary.txt"))
+all_features_df_valid$OLclade <- sapply(rownames(all_features_df_valid), function(y) strsplit(x = y, split = "_")[[1]][1])
+Jumps_num <- sapply(OLclades_oi, function(x) length(which(all_features_df_valid$OLclade==x)))
+downwardJumps_num <- sapply(OLclades_oi, function(x) length(which(all_features_df_valid[which(all_features_df_valid$OLclade==x),"delta_GC"]<0)))
+upwardJumps_num <- sapply(OLclades_oi, function(x) length(which(all_features_df_valid[which(all_features_df_valid$OLclade==x),"delta_GC"]>0)))
+
+deltaGC_vs_GC_df <- as.data.frame(matrix(data = c(bestFit_params[OLclades_oi,"root_state"], Jumps_num, upwardJumps_num,downwardJumps_num), ncol = 4, dimnames = list(OLclades_oi, c("ancestralGC", "jumps_num", "upJumps_num", "downJumps_num"))))
+
+deltaGC_vs_GC_OLclades_plt <- ggplot(data = deltaGC_vs_GC_df, aes(x = ancestralGC, y = upJumps_num/(downJumps_num + upJumps_num))) + geom_point(color=grey(0.5)) + theme_cowplot() + ggtitle("Fraction of upward jumps \n in order-level clades") + theme(plot.title=element_text(hjust=0.5))
+deltaGC_vs_GC_OLclades_plt <- deltaGC_vs_GC_OLclades_plt + scale_x_continuous(name="ancestral GC") + scale_y_continuous(name="fraction of upward jumps", limits = c(0,1))
+deltaGC_vs_GC_OLclades_plt
+
+all_features_df_valid$endoSymb_status <- factor(all_features_df_valid$endoSymb_status, levels=c(1,0))
+
+deltaGC_vs_GC <- ggplot(data=all_features_df_valid, aes(x = sister_GC, y = delta_GC, color=endoSymb_status)) + geom_point() + theme_cowplot() + theme(legend.position=c(0.02,0.18), plot.title=element_text(hjust=0.5)) + ggtitle("Jump magnitude vs ancestral GC \n for each jump")
+deltaGC_vs_GC <- deltaGC_vs_GC + scale_x_continuous(name="ancestral GC (unaffected)") + scale_y_continuous(name = expression(Delta*"GC (affected \u2013 unaffected)")) + scale_color_grey(start = 0, end = 0.5, name = "", labels=c("endosymbionts", "others"))
+deltaGC_vs_GC <- deltaGC_vs_GC + geom_smooth(method = "lm", aes(x=sister_GC, y=delta_GC), data=subset(all_features_df_valid, endoSymb_status==0))
+deltaGC_vs_GC <- deltaGC_vs_GC + stat_cor(data = subset(all_features_df_valid,endoSymb_status=0), label.y=c(35, 35), label.x=c(50,30)) + stat_regline_equation(data = subset(all_features_df_valid,endoSymb_status=0), label.y=c(30,30), label.x=c(50,30))
+
+deltaGC_vs_GC_all <- deltaGC_vs_GC_OLclades_plt + deltaGC_hist + deltaGC_vs_GC + plot_annotation(tag_levels = "A") + plot_layout(ncol = 3) 
+# deltaGC_vs_GC_all
+
+ggsave2(filename = "deltaGC_hist_vs_GC_all.png", plot = deltaGC_vs_GC_all, path = jump_common_dir, width = 14, height = 4, units = "in", dpi = 300)
+ggsave2(filename = "deltaGC_hist_vs_GC_all.svg", plot = deltaGC_vs_GC_all, path = jump_common_dir, width = 14, height = 4, units = "in", dpi = 300)
+```
