@@ -1,0 +1,204 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+# Background
+We want to find out if the magnitudes of GC jumps as inferred from GC of ribosomal genes is similar to those from whole genome GC. For this, I need to calculate GC from ribosomal genes only. The ribosomal genes must be annotated in cds files.
+#### Common data and input processing
+```{r common_code }
+machine_oi <- "saurabh_personal2" #
+library(parallel)
+
+library(phytools)
+library(rncl)
+library(seqinr)
+
+library(tidyverse)
+library(reshape2)
+
+library(cowplot)
+library(viridis)
+library(ggpubr)
+library(patchwork)
+library(dendextend)
+
+n_cores_av <- 3
+
+main_dir <- "../"
+
+input_dir <- "../Input_data/"
+levolution_data_dir <- "../Input_data/levolution_files_inference_actual_data/"
+jump_common_dir <- "../Results/jumps_analysis/"
+
+GTDB_14k_tree <- read_newick_phylo(file = paste0(main_dir, "Input_data/phylogenies/GTDB_bac120_r80_pruned0.01.newick"))
+GTDB_14k_metadata <- read.delim(file = paste0(main_dir, "Input_data/phylogenies/GTDB_bac_metadata_r80_pruned0.01.tsv"), header = T, row.names = 1, stringsAsFactors = F)
+
+levolution_best_fit_parameters <- read.table(file = paste0(levolution_data_dir, "levolution_best_fit_parameters_summary.txt"), row.names = 1, header = T, stringsAsFactors = F)
+
+levolution_all_focal_clade_details <- read.csv(file = paste0(input_dir, "AS1.csv"), header = T, stringsAsFactors = F)
+
+gd_base <- paste0(main_dir, "Input_data/GTDB_data/GTDB_")
+fn_types <- c("ass_fn", "ft_fn", "cds_fn", "rna_fn", "ftcnt_fn", "fna_fn", "gb_fn", "prot_fn")
+gdirs_oi <- c("assembly_reports/", "feature_tables/", "cds/", "rna/", "feature_counts/", "genomes/", "gb/", "proteins/")
+names(gdirs_oi) <- fn_types
+
+download_script <- paste0(main_dir, "Codes/download_all_genome_files_from_GCFonly.py")
+source(file = paste0(main_dir, "Codes/plotTree.wBars.R"))
+
+OLclades_oi <- c("Sphingomonadale", "Rhizobiale", "Rhodobacterale", "Alpha1", "Bacteroidale", "Cytophagale", "Flavobacteriale","Pseudomonadale", "Enterobacterales", "Betaproteo")
+p_folders <- c(rep("Alphaproteo",4), rep("Bacteroidetes",3), rep("Gammaproteo", 3))
+pp_cutoffs <- c(0.75,0.75,0.75,0.95,0.95,0.95,0.75, 0.9,0.9,0.9)
+alphas_oi <- c(1,1,1,0.5,0.25,0.25,1,0.25,0.5,0.5)
+config_oi <- 1
+
+get_genera_sp_names <- function(full_GTDB_taxonomy){
+  GTDB_fields <- strsplit(x = full_GTDB_taxonomy, split = ";g__")[[1]]
+  return(paste0("g__", GTDB_fields[2]))
+}
+
+clade_size_cutoff <- 20
+
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+##colorBlind_friendly_palette= black, orange, sky blue, bluish green, yellow, blue, vermillion, reddish purple
+```
+### Estimate GC change from ribosomal proteins
+#### Function to get GC content of ribosomal protein genes
+```{r get_ribosomal_GC }
+get_ribosomal_GC <- function(accNum_oi){
+  cds_list <- read.fasta(file = paste0(gd_base,"cds/",accNum_oi,"_cds_from_genomic.fna"), seqtype = "DNA", set.attributes = T, strip.desc = T)
+  cds_list_oi <- cds_list[which(grepl("ribosom", getAnnot.list(cds_list)))]
+  gc_oi <- median(sapply(cds_list_oi, GC), na.rm = T)
+  gc3_oi <- median(sapply(cds_list_oi, GC3), na.rm = T)
+  
+  return(c(gc_oi, gc3_oi))
+}
+
+get_CDS_GC <- function(accNum_oi){
+  cds_list <- read.fasta(file = paste0(gd_base,"cds/",accNum_oi,"_cds_from_genomic.fna"), seqtype = "DNA", set.attributes = T, strip.desc = T)
+  cds_list_oi <- cds_list
+  gc_oi <- median(sapply(cds_list_oi, GC), na.rm = T)
+  gc3_oi <- median(sapply(cds_list_oi, GC3), na.rm = T)
+  
+  return(c(gc_oi, gc3_oi))
+}
+```
+
+#### Extract ribosomal GC
+```{r extract_ribosome_GC }
+for(OLclade_n in 1:length(OLclades_oi)){
+  OLclade_oi <- OLclades_oi[OLclade_n]
+  print(paste0("Analysing jumps within ", OLclade_oi))
+
+  jumpClade_details <- read.table(file = paste0(jump_common_dir, OLclade_oi, "_jumpSummaries4.tab"), stringsAsFactors = F)
+  jumpClade_details$igr_analysis <- NA
+  
+  colNames_rGC_details <- c("focal_rGC", "sis_rGC","focal_rGC3", "sis_rGC3", "focal_cdsGC", "sis_cdsGC","focal_cdsGC3", "sis_cdsGC3", "focal_gGC", "sis_gGC")
+  rGC_details <- as.data.frame(matrix(NA, nrow = nrow(jumpClade_details), ncol = length(colNames_rGC_details), dimnames = list(paste0(OLclade_oi,"_jump",1:nrow(jumpClade_details)), colNames_rGC_details)))
+
+  for(jumpNum_oi in which(jumpClade_details$depth %in% c("sister", "outgroup1", "outgroup2") & jumpClade_details$genomes_downloaded==T)){#only for those jumps which are analyzable
+    print(paste0("Comparing ribosomal GC for jump number ", jumpNum_oi))
+    
+    jumpDir <- paste0(jump_common_dir, OLclade_oi, "_jump", jumpNum_oi, "/")
+    
+    all_accNums <- read.table(paste0(jumpDir, "ass_fn_GCFids_found.txt"), stringsAsFactors = F)
+    GTDB_accNums_map <- all_accNums$V1
+    GTDB_labels <- read.table(paste0(jumpDir, "required_GCFonly_ids.txt"), stringsAsFactors = F)
+    names(GTDB_accNums_map) <- GTDB_labels$V1
+    
+    nested_focalTip_labels <- tryCatch({
+      read.table(file = paste0(jumpDir, "nestedFocalTips.tab"), stringsAsFactors = F)$V1
+    }, error=function(e){
+      print(e)
+      return(NA)
+    })
+    
+    focal_GTDBLabels <- read.table(paste0(jumpDir, OLclade_oi,"_jump",jumpNum_oi,"_focalGTDBLabels.tab"), stringsAsFactors = F, header = F)
+    focal_GTDBLabels_valid <- setdiff(focal_GTDBLabels$V1, nested_focalTip_labels)
+    focal_accNums <- sapply(focal_GTDBLabels_valid, function(x) GTDB_accNums_map[x], simplify = T, USE.NAMES = F)
+    
+    sis_GTDBLabels <- read.table(paste0(jumpDir,OLclade_oi,"_jump",jumpNum_oi,"_sisGTDBLabels.tab"), stringsAsFactors = F, header = F)
+    sis_GTDBLabels_valid <- setdiff(sis_GTDBLabels$V1, nested_focalTip_labels)
+    sis_accNums <- sapply(sis_GTDBLabels_valid, function(x) GTDB_accNums_map[x], simplify = T, USE.NAMES = F)
+    
+    out1_accNums <- NA
+    if(jumpClade_details[paste0("jump",jumpNum_oi), "depth"] %in% c("outgroup1", "outgroup2")){
+      out1_GTDBLabels <- read.table(paste0(jumpDir,OLclade_oi,"_jump",jumpNum_oi,"_out1GTDBLabels.tab"), stringsAsFactors = F, header = F)
+      out1_GTDBLabels_valid <- setdiff(out1_GTDBLabels$V1, nested_focalTip_labels)
+      out1_accNums <- sapply(out1_GTDBLabels_valid, function(x) GTDB_accNums_map[x], simplify = T, USE.NAMES = F)
+    }
+    
+    out2_accNums <- NA
+    if(jumpClade_details[paste0("jump",jumpNum_oi), "depth"]=="outgroup2"){
+      out2_GTDBLabels <- read.table(paste0(jumpDir,OLclade_oi,"_jump",jumpNum_oi,"_out2GTDBLabels.tab"), stringsAsFactors = F, header = F)
+      out2_GTDBLabels_valid <- setdiff(out2_GTDBLabels$V1, nested_focalTip_labels)
+      out2_accNums <- sapply(out2_GTDBLabels_valid, function(x) GTDB_accNums_map[x], simplify = T, USE.NAMES = F)
+    }
+    
+    cds_accNums_available <- read.table(paste0(jumpDir, "cds_fn_GCFids_found.txt"), stringsAsFactors = F)
+    cds_accNums_available <- setdiff(cds_accNums_available$V1, NA)
+    
+    if(!any(focal_accNums %in% cds_accNums_available) || !any(c(sis_accNums) %in% cds_accNums_available)){ #, out1_accNums
+      print("Cannot compare ribosomal GC, cds annotations not available")
+      #jumpClade_details[paste0("jump",jumpNum_oi),"rGC_analysis"] <- "feat_tables_unav"
+      next
+    }
+    
+    median_rGC <- sapply(cds_accNums_available, function(x) get_ribosomal_GC(x)[1])
+    median_rGC3 <- sapply(cds_accNums_available, function(x) get_ribosomal_GC(x)[2])
+    median_cdsGC <- sapply(cds_accNums_available, function(x) get_CDS_GC(x)[1])
+    median_cdsGC3 <- sapply(cds_accNums_available, function(x) get_CDS_GC(x)[2])
+    
+    focal_rGC <- median(median_rGC[intersect(focal_accNums, cds_accNums_available)], na.rm = T)*100
+    sis_rGC <- median(median_rGC[intersect(sis_accNums, cds_accNums_available)], na.rm = T)*100
+    focal_rGC3 <- median(median_rGC3[intersect(focal_accNums, cds_accNums_available)], na.rm = T)*100
+    sis_rGC3 <- median(median_rGC3[intersect(sis_accNums, cds_accNums_available)], na.rm = T)*100
+    
+    focal_cdsGC <- median(median_cdsGC[intersect(focal_accNums, cds_accNums_available)], na.rm = T)*100
+    sis_cdsGC <- median(median_cdsGC[intersect(sis_accNums, cds_accNums_available)], na.rm = T)*100
+    focal_cdsGC3 <- median(median_cdsGC3[intersect(focal_accNums, cds_accNums_available)], na.rm = T)*100
+    sis_cdsGC3 <- median(median_cdsGC3[intersect(sis_accNums, cds_accNums_available)], na.rm = T)*100
+    
+    GTDB_GC <- GTDB_14k_metadata[names(GTDB_accNums_map)[GTDB_accNums_map %in% cds_accNums_available],"gc_percentage"]
+    names(GTDB_GC) <- GTDB_accNums_map[GTDB_accNums_map %in% cds_accNums_available]
+    focal_gGC <- median(GTDB_GC[intersect(focal_accNums, cds_accNums_available)])
+    sis_gGC <- median(GTDB_GC[intersect(sis_accNums, cds_accNums_available)])
+    
+    rGC_details[paste0(OLclade_oi, "_jump",jumpNum_oi),] <- c(focal_rGC, sis_rGC,focal_rGC3, sis_rGC3, focal_cdsGC, sis_cdsGC,focal_cdsGC3, sis_cdsGC3, focal_gGC, sis_gGC)
+  }##end loop over jumps in a clade
+  write.table(rGC_details, file = paste0(jump_common_dir, OLclade_oi, "_rGC_details.tab"), quote = F)
+}##end loop over order lvel clades
+```
+#### Plot rGC comparisons
+```{r collate_rGC_comparisons }
+all_rGC_comparisons <- do.call(rbind, lapply(OLclades_oi, function(x) read.table(paste0(jump_common_dir,x,"_rGC_details.tab"), stringsAsFactors = F, header = T, row.names = 1)))
+all_rGC_comparisons$delta_rGC <- all_rGC_comparisons$focal_rGC - all_rGC_comparisons$sis_rGC
+all_rGC_comparisons$delta_rGC3 <- all_rGC_comparisons$focal_rGC3 - all_rGC_comparisons$sis_rGC3
+all_rGC_comparisons$delta_cdsGC <- all_rGC_comparisons$focal_cdsGC - all_rGC_comparisons$sis_cdsGC
+all_rGC_comparisons$delta_cdsGC3 <- all_rGC_comparisons$focal_cdsGC3 - all_rGC_comparisons$sis_cdsGC3
+all_rGC_comparisons$delta_gGC <- all_rGC_comparisons$focal_gGC - all_rGC_comparisons$sis_gGC
+write.table(all_rGC_comparisons, file = paste0(jump_common_dir, "levolution_jumps_rGC_comparison.tab"), quote = F)
+```
+
+```{r plot_rGC_comparisons }
+all_rGC_comparisons <- read.table(file = paste0(jump_common_dir, "levolution_jumps_rGC_comparison.tab"), stringsAsFactors = F)
+all_rGC_comparisons <- subset(all_rGC_comparisons, delta_gGC>-20)
+
+delta_rGC_vs_delta_gGC <- ggplot(data = all_rGC_comparisons, aes(x=delta_gGC, y=delta_rGC, color=delta_gGC)) + geom_point() + geom_smooth(method="lm") + theme_cowplot() + scale_color_viridis_c(option = "plasma", limits=c(-20,20), direction = -1, name=expression(Delta~"GC (genome)")) + geom_abline(slope = 1, intercept = 0, linetype="dashed", color="grey") + geom_abline(slope = 0, intercept = 0, linetype="dashed", color="grey") + scale_x_continuous(name=expression(Delta~"GC (genome)")) + scale_y_continuous(name=expression(Delta~"GC (r-proteins)")) + stat_cor(method = "spearman")
+
+delta_rGC_vs_delta_cdsGC <- ggplot(data = all_rGC_comparisons, aes(x=delta_cdsGC, y=delta_rGC, color=delta_gGC)) + geom_point() + geom_smooth(method="lm") + theme_cowplot() + scale_color_viridis_c(option = "plasma", limits=c(-20,20), direction = -1, name=expression(Delta~"GC (genome)")) + geom_abline(slope = 1, intercept = 0, linetype="dashed", color="grey") + scale_x_continuous(name=expression(Delta~"GC (all coding)")) + scale_y_continuous(name=expression(Delta~"GC (r-proteins)")) + stat_cor(method = "spearman")
+
+focal_rGC_vs_focal_gGC <- ggplot(data = all_rGC_comparisons, aes(x=focal_gGC, y=focal_rGC, color=delta_gGC)) + geom_point() + geom_smooth(method="lm") + theme_cowplot() + scale_color_viridis_c(option = "plasma", limits=c(-20,20), direction = -1, name=expression(Delta~"GC (genome)")) + geom_abline(slope = 1, intercept = 0, linetype="dashed", color="grey") + scale_x_continuous(name="focal clade GC (genome)") + scale_y_continuous("focal clade GC (r-proteins)") + stat_cor(method = "spearman")
+
+sis_rGC_vs_sis_gGC <- ggplot(data = all_rGC_comparisons, aes(x=sis_gGC, y=sis_rGC, color=delta_gGC)) + geom_point() + geom_smooth(method="lm") + theme_cowplot() + scale_color_viridis_c(option = "plasma", limits=c(-20,20), direction = -1) + geom_abline(slope = 1, intercept = 0, linetype="dashed", color="grey") + scale_x_continuous(name="sister clade GC (genome)") + scale_y_continuous("sister clade GC (r-proteins)") + stat_cor(method = "spearman")
+
+focal_rGC_vs_focal_cdsGC <- ggplot(data = all_rGC_comparisons, aes(x=focal_cdsGC, y=focal_rGC, color=delta_gGC)) + geom_point() + geom_smooth(method="lm") + theme_cowplot() + scale_color_viridis_c(option = "plasma", limits=c(-20,20), direction = -1) + geom_abline(slope = 1, intercept = 0, linetype="dashed", color="grey") + scale_x_continuous(name="focal clade GC (all coding)") + scale_y_continuous("focal clade GC (r-proteins)") + stat_cor(method = "spearman")
+
+sis_rGC_vs_sis_cdsGC <- ggplot(data = all_rGC_comparisons, aes(x=sis_cdsGC, y=sis_rGC, color=delta_gGC)) + geom_point() + geom_smooth(method="lm") + theme_cowplot() + scale_color_viridis_c(option = "plasma", limits=c(-20,20), direction = -1) + geom_abline(slope = 1, intercept = 0, linetype="dashed", color="grey") + scale_x_continuous(name="sister clade GC (all coding)") + scale_y_continuous("sister clade GC (r-proteins)") + stat_cor(method = "spearman")
+
+plot_rGC_stats <- ggarrange(delta_rGC_vs_delta_gGC, focal_rGC_vs_focal_gGC, sis_rGC_vs_sis_gGC, nrow = 1, ncol = 3, common.legend = T, labels = "AUTO", legend="top")
+ggsave2(filename = paste0(jump_common_dir,"rGC_stats.pdf"), width = 12, height = 4)
+ggsave2(filename = paste0(jump_common_dir,"rGC_stats.svg"), width = 12, height = 4)
+# print(lm_oi)
+```
+

@@ -1,18 +1,9 @@
 ---
-title: "Compare pairwise dN/dS for clades affected by GC jumps"
+title: "Various analysis related to GC jumps"
 output: html_notebook
 ---
 
 ### Background
-Previously, for a subset of datasets, I have tried estimating dN, dS using a non-stationary codon model. However, we now uspect that this model does not fit the data well leading to biased estimates of dN,dS on long branches. Therefore, I will now attempt an alternate approach. I will try to test for changes in other genomic proxies which can give indication of evolutionary forces acting on the genomes. These include- 
-1. dN/dS (inceased dN/dS indicates increased drift)
-2. CUB (decreased CUb indicates decreased Ne.s)
-3. rate of 16s rRNA evolution (increased rate indicates increased drift/mutation)
-4. genome size (reductions can be due to increased drift or increased streamlining selection)
-5. coding density (decrease indicates drift, increase indicates streamlinign selection)
-6. length of intergenic region (decrease indicates increased streamlining selection)
-
-estimate pairwise dN/dS within taxa of the focal clades (affected by jumps) and compare it with dN/dS of pairs in the corresponding sister or related clades.
 
 #### Common data and input processing
 ```{r common_code }
@@ -451,7 +442,6 @@ all_summaries <- do.call(rbind, lapply(OLclades_oi, function(x) read.table(paste
 write.table(all_summaries, file = paste0(jump_common_dir, "levolution_jumps_feature_summaries.tab"), quote = F)
 ```
 
-
 ### Analysis for manuscript
 #### Collate and write data
 ```{r write_all_features_data }
@@ -553,4 +543,45 @@ deltaGC_vs_GC_all <- deltaGC_vs_GC_OLclades_plt + deltaGC_hist + deltaGC_vs_GC +
 
 ggsave2(filename = "deltaGC_hist_vs_GC_all.png", plot = deltaGC_vs_GC_all, path = jump_common_dir, width = 14, height = 4, units = "in", dpi = 300)
 ggsave2(filename = "deltaGC_hist_vs_GC_all.svg", plot = deltaGC_vs_GC_all, path = jump_common_dir, width = 14, height = 4, units = "in", dpi = 300)
+```
+
+### Analysis of jump heights vs branch heights
+Are jumps more frequent near the tips? Correlate cumulative distribution of branches and jumps.
+```{r height_distributions }
+all_edge_heights <- c()
+jump_edge_heights <- c()
+random_edge_heights <- c()
+
+for(clade_n in 1:length(OLclades_oi)){
+  OLclade_oi <- OLclades_oi[clade_n]
+  pp_cutoff <- pp_cutoffs[clade_n]
+  alpha_oi <- alphas_oi[clade_n]
+  p_folder <- p_folders[clade_n]
+
+  tree_pp <- read.newick(file = paste0(res_dir,OLclade_oi,"_GTDB_14k_GC_config", config_oi, "_alpha", alpha_oi,".post"))
+  tree_in <- read.newick(paste0(phylogenies_dir,OLclade_oi,"_GTDB_14k_tree.newick"))
+
+  detected_jump_edges <- which(tree_pp$edge.length>=pp_cutoff)
+  heights_oi <- (nodeHeights(tree_in)[detected_jump_edges,1]+nodeHeights(tree_in)[detected_jump_edges,2])/(2*max(nodeHeights(tree_in)[,1]))
+  jump_edge_heights <- c(jump_edge_heights, heights_oi)
+  
+  heights_oi <- (nodeHeights(tree_in)[,1]+nodeHeights(tree_in)[,2])/(2*max(nodeHeights(tree_in)[,1]))
+  all_edge_heights <- c(all_edge_heights, heights_oi)
+  
+  random_sample <- sample(x = 1:length(tree_in$edge.length), size = 10*length(detected_jump_edges), prob =tree_in$edge.length )
+  heights_oi <- (nodeHeights(tree_in)[random_sample,1]+nodeHeights(tree_in)[random_sample,2])/(2*max(nodeHeights(tree_in)))
+  random_edge_heights <- c(random_edge_heights, heights_oi)
+}
+
+svg(filename = paste0(jump_common_dir, "height_distributions_branches_random_actual_jumps.svg"), width = 600, height = 900)
+png(filename = paste0(jump_common_dir, "height_distributions_branches_random_actual_jumps.png"), width = 600, height = 900)
+par(mfrow=c(3,1))
+hist(all_edge_heights, breaks = 20, main=" (a) Height distribution of all branches", xlab="Normalized height above root", cex.main=2, cex.lab=1.5, cex.axis=1.5, xlim=c(0,1))
+hist(random_edge_heights, breaks = 20, main="(b) Height distribution of branches w/ randomized jumps", xlab="Normalized height above root", cex.main=2, cex.lab=1.5, cex.axis=1.5, xlim=c(0,1))
+abline(v = summary(random_edge_heights)[c(2,3,5)], col="orange", lty=2, lwd=2)
+hist(jump_edge_heights, breaks = 20, main="(c) Height distribution of branches w/ actual jumps", xlab="Normalized height above root", cex.main=2, cex.lab=1.5, cex.axis=1.5, xlim=c(0,1))
+abline(v = summary(jump_edge_heights)[c(2,3,5)], col="orange", lty=2, lwd=2)
+dev.off()
+
+wilcox.test(jump_edge_heights, random_edge_heights)
 ```

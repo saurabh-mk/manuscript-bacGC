@@ -11,6 +11,7 @@ library(phytools)
 library(rncl)
 
 main_dir <- "../Results/geigerSim_results/"
+data_dir <- "../Input_data/levolution_files_inference_actual_data/"
 res_dir <- main_dir
 out_dir <- res_dir
 ```
@@ -162,4 +163,68 @@ for(clade_n in 1:length(clades_oi)){
 }
 
 write.table(x = PR_var_df, file = paste0(main_dir, "all_clades_PR_variation.tab"), row.names = PR_var_df$subclade)
+```
+
+### Recall by jump magnitude
+Our expectation is that bigger jumps will be detected with greater frequency.
+```{r recall_by_magnitude }
+clades_oi <- c("Sphingomonadale", "Rhizobiale", "Rhodobacterale", "Alpha1", "Bacteroidale", "Cytophagale", "Flavobacteriale", "Pseudomonadale", "Enterobacterales", "Betaproteo")
+p_folders <- c(rep("Alphaproteo",4), rep("Bacteroidetes",3), rep("Gammaproteo",3))
+pp_cutoffs <- c(0.75,0.75,0.75,0.95,0.95,0.95,0.75, 0.9,0.9,0.9)
+alphas_oi <- c(1,1,1,0.5,0.25,0.25,1,0.25,0.5,0.5)
+config_oi <- 1
+n_sims <- 1:5
+
+levolution_best_fit_parameters <- read.table(file = paste0(data_dir, "levolution_best_fit_parameters_summary.txt"), stringsAsFactors = F)
+
+all_simJumps_df <- NULL #clade, simN, jumpEdge, jumpNodeHeight, jumpSize, detected?, BrownianRate, effectBrown,effectJump
+
+for(clade_n in 1:length(clades_oi)){
+  precision_oi <- recall_oi <- c()
+  clade_oi <- clades_oi[clade_n]
+  parent_oi <- p_folders[clade_n]
+  alpha_oi <- alphas_oi[clade_n]
+  
+  res_dir <- paste0(main_dir,parent_oi,"_GTDB_14k_levolution/")
+  out_dir <- res_dir
+  
+  for(sim_n in n_sims){
+    tree_pp <- read.newick(file = paste0(res_dir,clade_oi,"_GTDB_14k_GC_config", config_oi, "_alpha", alpha_oi,"_geigerSim", sim_n, ".post"))
+    detected_jump_edges <- which(tree_pp$edge.length>=pp_cutoffs[clade_n])
+    
+    actual_jump_details <- read.csv(paste0(res_dir, clade_oi, "_GTDB_14k_GC_config", config_oi, "_alpha", alpha_oi,"_geigerSim", sim_n, ".details"), header = T, stringsAsFactors = F)
+    actual_jump_edges <- which(actual_jump_details$jumps>0)
+    max_node_depth <- max(node.depth(tree_pp))
+    actual_jump_height <- sapply(actual_jump_edges, function(x) node.depth(tree_pp)[tree_pp$edge[x,2]]/max_node_depth)
+    
+    actual_jump_clade <- sapply(actual_jump_edges, function(x) clade_oi)
+    actual_jump_simN <- sapply(actual_jump_edges, function(x) sim_n)
+    actual_jump_size <- sapply(actual_jump_edges, function(x) ifelse(actual_jump_details[x,"ancestor"] %in% actual_jump_details$descendant, actual_jump_details[x,"phenotype"] - actual_jump_details[which(actual_jump_details$descendant==actual_jump_details[x,"ancestor"]),"phenotype"], NA))
+    actual_jump_effectBrown <- sapply(actual_jump_edges, function(x) actual_jump_details[x,"effect_Brown"])
+    actual_jump_effectJump <- sapply(actual_jump_edges, function(x) actual_jump_details[x,"effect_Jump"])
+    actual_jump_BrownRate <-  sapply(actual_jump_edges, function(x) levolution_best_fit_parameters[clade_oi, "sig2"])
+    
+    actual_jump_detected <- sapply(actual_jump_edges, function(x) ifelse(x %in% detected_jump_edges,1,0))
+    
+    actual_jump_summary_simOI <- cbind.data.frame(actual_jump_clade, actual_jump_simN, actual_jump_edges, actual_jump_height, actual_jump_size, actual_jump_detected, actual_jump_BrownRate, actual_jump_effectBrown, actual_jump_effectJump)
+    
+    all_simJumps_df <- rbind(all_simJumps_df, actual_jump_summary_simOI)
+    
+  } ##loop over sims
+} #loop over clades
+```
+
+```{r plot_recall_rate_magnitude }
+library(ggplot2)
+library(cowplot)
+##calculate recall rate in intervals
+recall_rate <- sapply(seq(-22.5,22.5,5), function(x) mean(all_simJumps_df$actual_jump_detected[which(all_simJumps_df$actual_jump_size>(x-2.5) & all_simJumps_df$actual_jump_size<(x+2.5))])) 
+
+recall_rate_magnitude_df <- cbind.data.frame(seq(-22.5,22.5,5), recall_rate)
+colnames(recall_rate_magnitude_df) <- c("jumpSize", "recall_rate")
+
+recall_rate_plot <- ggplot(data=recall_rate_magnitude_df, aes(x=jumpSize, y=100*recall_rate)) + geom_bar(stat = "identity") + theme_cowplot() + scale_x_continuous(name=expression("jump magnitude ("* Delta*"GC%)")) + scale_y_continuous(name="jumps recalled (%)")
+recall_rate_plot
+ggsave(filename = "recall_rate_vs_jumpMagnitude.svg", plot = recall_rate_plot, path = main_dir, width = 6, height = 4, units = "in", dpi = 300)
+ggsave(filename = "recall_rate_vs_jumpMagnitude.png", plot = recall_rate_plot, path = main_dir, width = 6, height = 4, units = "in", dpi = 300)
 ```
